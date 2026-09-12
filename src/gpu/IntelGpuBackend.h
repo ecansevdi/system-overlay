@@ -57,10 +57,12 @@ private:
     Snapshot scanFdInfo();
     std::optional<double> readTemperature() const;
     void findHwmonTempPath();
+    void findVramTotal();
 
     DrmCard m_card;
     QString m_pciAddressNormalized; // drm-pdev format
     QString m_tempPath;
+    double m_vramTotalGiB = -1.0;   // largest PCI memory BAR (ReBAR), -1 = unknown
 
     // Full /proc/*/fd scans (thousands of readlink calls, ~20-30 ms) are
     // expensive; they run at most every kFullScanSeconds. Between full scans

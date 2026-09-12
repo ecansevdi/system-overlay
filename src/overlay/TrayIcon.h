@@ -20,12 +20,16 @@ Q_SIGNALS:
     void pauseRequested(bool paused);
     void quitRequested();
 
+    // One of the HUD rows (HudRows indices) was toggled in the menu.
+    void metricToggled(int row, bool visible);
+
 private:
     void updateActions();
 
     QSystemTrayIcon *m_tray = nullptr;
     QAction *m_visibilityAction = nullptr;
     QAction *m_pauseAction = nullptr;
+    QAction *m_metricActions[4] = {nullptr, nullptr, nullptr, nullptr};
     bool m_visible = true;
     bool m_paused = false;
 };

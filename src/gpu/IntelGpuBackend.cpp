@@ -81,6 +81,39 @@ IntelGpuBackend::IntelGpuBackend(const DrmCard &card)
 {
     m_pciAddressNormalized = normalizePciAddress(card.pciAddress);
     findHwmonTempPath();
+    findVramTotal();
+}
+
+// i915 exposes no userspace VRAM total (AMD's mem_info_vram_total is
+// AMD-only). With Resizable BAR enabled the full local-memory size shows up
+// as the largest PCI memory BAR in the device's resource file; otherwise the
+// aperture is small and we report no total (the HUD then omits the
+// denominator instead of guessing).
+void IntelGpuBackend::findVramTotal()
+{
+    QFile f(m_card.devicePath + QStringLiteral("/resource"));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+    constexpr double kMinTotalGiB = 1.0; // smaller BARs are apertures, not VRAM
+
+    while (true) {
+        const QByteArray raw = f.readLine();
+        if (raw.isEmpty())
+            break;
+        const QStringList fields = QString::fromLatin1(raw).simplified().split(QLatin1Char(' '));
+        if (fields.size() < 2)
+            continue;
+        bool okStart = false, okEnd = false;
+        const quint64 start = fields.at(0).toULongLong(&okStart, 16);
+        const quint64 end = fields.at(1).toULongLong(&okEnd, 16);
+        if (!okStart || !okEnd || end <= start)
+            continue;
+        const double gib = (end - start + 1) / (1024.0 * 1024.0 * 1024.0);
+        if (gib > m_vramTotalGiB)
+            m_vramTotalGiB = gib;
+    }
+    if (m_vramTotalGiB < kMinTotalGiB)
+        m_vramTotalGiB = -1.0;
 }
 
 void IntelGpuBackend::findHwmonTempPath()
@@ -288,6 +321,8 @@ GpuSample IntelGpuBackend::sample()
 
     const Snapshot snap = scanFdInfo();
     s.vramUsedGiB = snap.vramBytes / (1024.0 * 1024.0 * 1024.0);
+    if (m_vramTotalGiB > 0)
+        s.vramTotalGiB = m_vramTotalGiB;
 
     const auto now = std::chrono::steady_clock::now();
     if (m_hasPrev && m_prevWall) {
@@ -324,6 +359,11 @@ QString IntelGpuBackend::debugInfo() const
     ts << "  utilization source: /proc/*/fdinfo drm-engine-{render,compute,copy}"
           " (sum of client deltas)\n";
     ts << "  VRAM source: /proc/*/fdinfo drm-total-local0 (sum over clients, approximate)\n";
+    ts << "  VRAM total: "
+       << (m_vramTotalGiB > 0 ? QStringLiteral("%1 GiB (largest PCI memory BAR)")
+                                    .arg(m_vramTotalGiB, 0, 'f', 1)
+                              : QStringLiteral("(not discoverable, no denominator shown)"))
+       << "\n";
     ts << "  temperature source: "
        << (m_tempPath.isEmpty() ? QStringLiteral("(not found)") : m_tempPath) << "\n";
     return out;

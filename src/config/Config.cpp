@@ -84,6 +84,15 @@ void Config::load(const QString &explicitPath)
     m_textColor = settings.value(QStringLiteral("display/text_color"), m_textColor).toString();
     m_outlineColor = settings.value(QStringLiteral("display/outline_color"), m_outlineColor).toString();
 
+    m_warningPct = std::clamp(
+        settings.value(QStringLiteral("colors/warning_pct"), 75).toInt(), 1, 99);
+    m_criticalPct = std::clamp(
+        settings.value(QStringLiteral("colors/critical_pct"), 90).toInt(), 2, 100);
+    if (m_criticalPct <= m_warningPct)
+        m_criticalPct = m_warningPct + 1;
+    m_warningColor = settings.value(QStringLiteral("colors/warning_color"), m_warningColor).toString();
+    m_criticalColor = settings.value(QStringLiteral("colors/critical_color"), m_criticalColor).toString();
+
     m_showCpuUsage = settings.value(QStringLiteral("metrics/show_cpu_usage"), true).toBool();
     m_showCpuTemp = settings.value(QStringLiteral("metrics/show_cpu_temp"), true).toBool();
     m_showGpuUsage = settings.value(QStringLiteral("metrics/show_gpu_usage"), true).toBool();
@@ -127,6 +136,15 @@ void Config::writeDefaultConfigFile(const QString &path) const
         "show_tray=true\n"
         "text_color=#a6f28f\n"
         "outline_color=#000000\n"
+        "\n"
+        "[colors]\n"
+        "# Value colouring thresholds, applied to every percentage-based\n"
+        "# metric (CPU/GPU utilisation, RAM/VRAM fill): at >= warning_pct\n"
+        "# text turns warning_color, at >= critical_pct critical_color.\n"
+        "warning_pct=75\n"
+        "critical_pct=90\n"
+        "warning_color=#f2d24f\n"
+        "critical_color=#f25d5d\n"
         "\n"
         "[metrics]\n"
         "show_cpu_usage=true\n"

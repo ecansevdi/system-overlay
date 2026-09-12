@@ -5,7 +5,7 @@
 
 #include <cstddef>
 
-std::optional<double> MemoryMetrics::usedGiB()
+std::optional<MemoryMetrics::MemSample> MemoryMetrics::sample()
 {
     QFile f(QStringLiteral("/proc/meminfo"));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -43,6 +43,8 @@ std::optional<double> MemoryMetrics::usedGiB()
         return std::nullopt;
     }
 
-    const long usedKb = totalKb - availableKb;
-    return static_cast<double>(usedKb) / (1024.0 * 1024.0); // kB -> GiB
+    MemSample s;
+    s.totalGiB = totalKb / (1024.0 * 1024.0);
+    s.usedGiB = (totalKb - availableKb) / (1024.0 * 1024.0); // kB -> GiB
+    return s;
 }

@@ -10,9 +10,17 @@ no taskbar entry). Bottom-anchored positions automatically stay clear of panels.
 ```
 CPU: 10% 49°C
 GPU: 14% 47°C
-RAM: 6.57 GiB
-VRAM: 0.51 GiB
+RAM: 5.4/31.3 GiB
+VRAM: 0.5/8.0 GiB
 ```
+
+Each row has a thin (3 px) progress bar underneath, and every percentage-based
+value shares one colour function: normal green below the warning threshold,
+**yellow at ≥75 %** and **red at ≥90 %** (thresholds and colours configurable,
+see `[colors]` below). RAM shows `used/total` from `/proc/meminfo`; VRAM total
+comes from the kernel (AMD `mem_info_vram_total`, NVIDIA NVML/`nvidia-smi`,
+Intel: largest PCI memory BAR — hidden when not discoverable). The tray menu
+has checkable CPU/GPU/RAM/VRAM entries to show or hide rows at runtime.
 
 <!-- Screenshot: overlay above the Plasma panel in the bottom-right corner,
      light green monospace text, one metric per line -->
@@ -178,6 +186,15 @@ show_background=false          ; optional translucent panel behind the text
 show_tray=true                 ; tray icon (hide/restore/pause/quit menu)
 text_color=#a6f28f
 outline_color=#000000
+
+[colors]
+# One colour function for every percentage-based metric (CPU/GPU
+# utilisation, RAM/VRAM fill): at >= warning_pct the row turns
+# warning_color, at >= critical_pct critical_color.
+warning_pct=75
+critical_pct=90
+warning_color=#f2d24f
+critical_color=#f25d5d
 
 [metrics]
 show_cpu_usage=true

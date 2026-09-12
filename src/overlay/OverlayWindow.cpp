@@ -6,8 +6,14 @@
 #include <QPainterPath>
 #include <QResizeEvent>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+
+namespace {
+constexpr int kBarHeight = 3; // thin bar under each row
+constexpr int kBarGap = 2;    // gap between text baseline block and bar
+} // namespace
 
 OverlayWindow::OverlayWindow(const RenderConfig &config, QWindow *parent)
     : QWindow(parent)
@@ -43,11 +49,11 @@ void OverlayWindow::setRenderConfig(const RenderConfig &config)
     scheduleRender();
 }
 
-void OverlayWindow::setText(const QString &text)
+void OverlayWindow::setRows(const QList<HudRow> &rows)
 {
-    if (m_text == text)
+    if (m_rows == rows)
         return;
-    m_text = text;
+    m_rows = rows;
     updateGeometry();
     scheduleRender();
 }
@@ -55,14 +61,17 @@ void OverlayWindow::setText(const QString &text)
 QSize OverlayWindow::computeSizeHint() const
 {
     const QFontMetrics fm(m_cfg.font);
-    const QStringList lines = m_text.isEmpty() ? QStringList{QStringLiteral(" ")} : m_text.split(QLatin1Char('\n'));
 
     int widest = 0;
-    for (const QString &line : lines)
-        widest = std::max(widest, fm.horizontalAdvance(line));
+    for (const HudRow &row : m_rows)
+        widest = std::max(widest, fm.horizontalAdvance(row.text));
+    if (widest == 0)
+        widest = fm.horizontalAdvance(QStringLiteral(" "));
 
     const qreal pad = m_cfg.outlineWidth / 2.0 + m_cfg.shadowOffset + 2.0;
-    return QSize(int(std::ceil(widest + 2 * pad)), int(std::ceil(lines.size() * fm.height() + 2 * pad)));
+    const int rowH = fm.height() + kBarHeight + kBarGap;
+    const int count = m_rows.isEmpty() ? 1 : m_rows.size();
+    return QSize(int(std::ceil(widest + 2 * pad)), int(std::ceil(count * rowH + 2 * pad)));
 }
 
 void OverlayWindow::updateGeometry()
@@ -118,13 +127,19 @@ void OverlayWindow::renderNow()
     const QSize physical = size() * devicePixelRatio();
     m_backingStore->resize(physical);
 
-    // Re-rasterize the text only when its inputs changed.
-    const QString cacheKey = m_text +QLatin1Char('|') + QString::number(size().width())
-        + QLatin1Char('x') + QString::number(size().height()) + QLatin1Char('@')
-        + QString::number(devicePixelRatio());
-    if (m_textCache.isNull() || m_textCache.size() != physical || m_textCacheKey != cacheKey) {
+    // Re-rasterize only when the rendered content actually changed.
+    QString cacheKey = QString::number(size().width()) + QLatin1Char('x')
+        + QString::number(size().height()) + QLatin1Char('@')
+        + QString::number(devicePixelRatio()) + QLatin1Char('#')
+        + QString::number(m_cfg.showBackground);
+    for (const HudRow &row : m_rows) {
+        cacheKey += QLatin1Char('|') + row.text + QString::number(row.fraction, 'f', 3)
+            + row.color.name();
+    }
+
+    if (m_textCache.isNull() || m_textCache.size() != physical || m_cacheKey != cacheKey) {
         renderTextToImage(m_textCache);
-        m_textCacheKey = cacheKey;
+        m_cacheKey = cacheKey;
     }
 
     m_backingStore->beginPaint(rect);
@@ -136,9 +151,7 @@ void OverlayWindow::renderNow()
     m_backingStore->flush(rect);
 
     if (perfTrace)
-        fprintf(stderr, "render cost: %lld us | win dpr=%.2f screen dpr=%.2f geom=%dx%d\n",
-            perfTimer.nsecsElapsed() / 1000, devicePixelRatio(),
-            screen() ? screen()->devicePixelRatio() : -1.0, width(), height());
+        fprintf(stderr, "render cost: %lld us\n", perfTimer.nsecsElapsed() / 1000);
 }
 
 void OverlayWindow::renderTextToImage(QImage &image)
@@ -158,19 +171,27 @@ void OverlayWindow::renderTextToImage(QImage &image)
         p.fillPath(bg, m_cfg.backgroundColor);
     }
 
-    const QStringList lines = m_text.isEmpty() ? QStringList{QStringLiteral(" ")} : m_text.split(QLatin1Char('\n'));
     const QFontMetrics fm(m_cfg.font);
     const qreal pad = m_cfg.outlineWidth / 2.0 + m_cfg.shadowOffset + 2.0;
+    const int rowH = fm.height() + kBarHeight + kBarGap;
+
+    int widest = 0;
+    for (const HudRow &row : m_rows)
+        widest = std::max(widest, fm.horizontalAdvance(row.text));
+    if (widest == 0)
+        widest = fm.horizontalAdvance(QStringLiteral(" "));
 
     QPen outlinePen(m_cfg.outlineColor, m_cfg.outlineWidth);
     outlinePen.setJoinStyle(Qt::RoundJoin);
     outlinePen.setCapStyle(Qt::RoundCap);
 
-    for (int i = 0; i < lines.size(); ++i) {
-        const qreal baseline = pad + i * fm.height() + fm.ascent();
+    for (int i = 0; i < m_rows.size(); ++i) {
+        const HudRow &row = m_rows.at(i);
+        const qreal rowTop = pad + i * rowH;
+        const qreal baseline = rowTop + fm.ascent();
 
         QPainterPath path;
-        path.addText(QPointF(pad, baseline), m_cfg.font, lines.at(i));
+        path.addText(QPointF(pad, baseline), m_cfg.font, row.text);
 
         // 1) offset shadow
         p.save();
@@ -183,8 +204,18 @@ void OverlayWindow::renderTextToImage(QImage &image)
         // 2) dark outline
         p.strokePath(path, outlinePen);
 
-        // 3) light text fill
-        p.fillPath(path, m_cfg.textColor);
+        // 3) value colour fill (normal / warning / critical)
+        p.fillPath(path, row.color.isValid() ? row.color : m_cfg.textColor);
+
+        // 4) thin progress bar under the text (empty track when the metric
+        //    has no percentage right now)
+        const qreal barY = rowTop + fm.height() + kBarGap;
+        p.fillRect(QRectF(pad, barY, widest, kBarHeight), m_cfg.shadowColor);
+        if (row.fraction >= 0) {
+            const double f = std::clamp(row.fraction, 0.0, 1.0);
+            p.fillRect(QRectF(pad, barY, widest * f, kBarHeight),
+                row.color.isValid() ? row.color : m_cfg.textColor);
+        }
     }
     p.end();
 }

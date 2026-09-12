@@ -39,6 +39,20 @@ TrayIcon::TrayIcon(QObject *parent)
     m_visibilityAction = menu->addAction(QStringLiteral("Gizle"));
     m_pauseAction = menu->addAction(QStringLiteral("Duraklat"));
     menu->addSeparator();
+
+    // Per-metric toggles: rows can be shown/hidden at runtime.
+    static const char *kRowNames[4] = {"CPU", "GPU", "RAM", "VRAM"};
+    for (int row = 0; row < 4; ++row) {
+        QAction *action = menu->addAction(QLatin1String(kRowNames[row]));
+        action->setCheckable(true);
+        action->setChecked(true);
+        connect(action, &QAction::toggled, this, [this, row](bool visible) {
+            Q_EMIT metricToggled(row, visible);
+        });
+        m_metricActions[row] = action;
+    }
+    menu->addSeparator();
+
     QAction *quitAction = menu->addAction(QStringLiteral("Çıkış"));
 
     connect(m_visibilityAction, &QAction::triggered, this, [this]() {

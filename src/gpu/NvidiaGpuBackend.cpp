@@ -114,7 +114,7 @@ bool NvidiaGpuBackend::startNvidiaSmi(int intervalMs)
     m_smiProcess = new QProcess;
     m_smiProcess->setProgram(QStringLiteral("nvidia-smi"));
     m_smiProcess->setArguments({
-        QStringLiteral("--query-gpu=utilization.gpu,temperature.gpu,memory.used"),
+        QStringLiteral("--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total"),
         QStringLiteral("--format=csv,noheader,nounits"),
         QStringLiteral("--id=") + m_smiBusId,
         QStringLiteral("-lms"),
@@ -158,7 +158,7 @@ std::optional<GpuSample> NvidiaGpuBackend::pollNvidiaSmi()
         if (parts.size() < 3)
             continue;
         GpuSample s;
-        bool okU = false, okT = false, okM = false;
+        bool okU = false, okT = false, okM = false, okT2 = false;
         const double util = parts.at(0).trimmed().toDouble(&okU);
         const double temp = parts.at(1).trimmed().toDouble(&okT);
         const double memMb = parts.at(2).trimmed().toDouble(&okM);
@@ -168,6 +168,11 @@ std::optional<GpuSample> NvidiaGpuBackend::pollNvidiaSmi()
             s.temperatureC = temp;
         if (okM)
             s.vramUsedGiB = memMb / 1024.0;
+        if (parts.size() >= 4) {
+            const double totalMb = parts.at(3).trimmed().toDouble(&okT2);
+            if (okT2 && totalMb > 0)
+                s.vramTotalGiB = totalMb / 1024.0;
+        }
         return s;
     }
     return std::nullopt;

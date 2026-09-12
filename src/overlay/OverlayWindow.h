@@ -6,14 +6,20 @@
 #include <QImage>
 #include <QWindow>
 
+#include "metrics/HudRow.h"
+
+#include <QList>
+
 // The overlay surface itself: a frameless, input-transparent top-level
 // QWindow painted with QBackingStore. Deliberately not a QWidget — a raw
 // QWindow is lighter and, crucially, lets LayerShellQt attach its shell
 // integration at platform-surface creation time (before any shell surface is
 // committed), which is required for a real layer-shell overlay.
 //
-// Text is drawn with a dark outline plus a soft offset shadow so it stays
-// readable on light and dark backgrounds alike.
+// Each row is drawn as text with a dark outline plus a soft offset shadow so
+// it stays readable on light and dark backgrounds alike, with a thin
+// progress bar underneath (3 px) that only exists where the metric has a
+// natural percentage.
 class OverlayWindow : public QWindow
 {
     Q_OBJECT
@@ -32,7 +38,7 @@ public:
 
     explicit OverlayWindow(const RenderConfig &config, QWindow *parent = nullptr);
 
-    void setText(const QString &text);
+    void setRows(const QList<HudRow> &rows);
     void setRenderConfig(const RenderConfig &config);
 
 protected:
@@ -47,13 +53,13 @@ private:
     void updateGeometry();
 
     QBackingStore *m_backingStore = nullptr;
-    QString m_text;
+    QList<HudRow> m_rows;
     RenderConfig m_cfg;
 
-    // Cached rasterization of the current text: text rendering with an
+    // Cached rasterization of the current rows: text rendering with an
     // outlined QPainterPath costs a few ms; redrawing happens at most once
     // per refresh, so we rasterize once and only blit on frame updates.
     QImage m_textCache;
-    QString m_textCacheKey;
+    QString m_cacheKey;
     bool m_renderPending = false;
 };

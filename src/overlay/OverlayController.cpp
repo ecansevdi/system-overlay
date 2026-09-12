@@ -17,10 +17,10 @@ OverlayController::OverlayController(const Config &config, MetricManager *metric
     , m_config(config)
     , m_metrics(metrics)
 {
-    connect(m_metrics, &MetricManager::textChanged, this, [this](const QString &text) {
+    connect(m_metrics, &MetricManager::rowsChanged, this, [this](const QList<HudRow> &rows) {
         const bool xcb = QGuiApplication::platformName() != QLatin1String("wayland");
         for (const Entry &e : m_windows) {
-            e.window->setText(text);
+            e.window->setRows(rows);
             // On X11 the window is self-positioned: recompute whenever the
             // content (and therefore the window size) changes so a
             // bottom/right-anchored HUD stays pinned to its corner.
@@ -68,8 +68,8 @@ void OverlayController::addWindowForScreen(QScreen *screen)
     if (!entry.layerShell)
         X11Overlay::configure(entry.window.get(), m_config, screen);
 
-    // Paint the last known text as soon as the window is exposed.
-    entry.window->setText(m_metrics->currentText());
+    // Paint the last known rows as soon as the window is exposed.
+    entry.window->setRows(m_metrics->currentRows());
 
     m_windows.push_back(std::move(entry));
 }
@@ -112,6 +112,7 @@ void OverlayController::createTrayIcon()
         }
     });
     connect(m_tray, &TrayIcon::pauseRequested, m_metrics, &MetricManager::setPaused);
+    connect(m_tray, &TrayIcon::metricToggled, m_metrics, &MetricManager::setRowVisible);
     connect(m_tray, &TrayIcon::quitRequested, qGuiApp, &QCoreApplication::quit);
 }
 

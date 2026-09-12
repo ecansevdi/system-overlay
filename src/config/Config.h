@@ -35,6 +35,14 @@ public:
     int offsetX() const { return m_offsetX; }
     int offsetY() const { return m_offsetY; }
     bool showTray() const { return m_showTray; }
+
+    // Value colouring: one function for every percentage-based value.
+    // >= criticalPct -> criticalColor, >= warningPct -> warningColor, else
+    // the normal text colour. Thresholds are user-configurable.
+    int warningPct() const { return m_warningPct; }
+    int criticalPct() const { return m_criticalPct; }
+    const QString &warningColor() const { return m_warningColor; }
+    const QString &criticalColor() const { return m_criticalColor; }
     int fontSizePx() const { return m_fontSizePx; }
     const QString &fontFamily() const { return m_fontFamily; }
     bool showBackground() const { return m_showBackground; }
@@ -62,6 +70,11 @@ private:
     int m_offsetX = 10;
     int m_offsetY = 10;
     bool m_showTray = true;
+
+    int m_warningPct = 75;
+    int m_criticalPct = 90;
+    QString m_warningColor = QStringLiteral("#f2d24f"); // yellow
+    QString m_criticalColor = QStringLiteral("#f25d5d"); // red
     int m_fontSizePx = 14;
     QString m_fontFamily = QStringLiteral("monospace");
     bool m_showBackground = false;
