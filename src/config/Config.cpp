@@ -16,6 +16,15 @@ QString Config::configFilePath()
         + QStringLiteral("/system-overlay/config.ini");
 }
 
+void Config::saveTextColor(const QColor &color)
+{
+    if (!color.isValid())
+        return;
+    QSettings settings(configFilePath(), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("display/text_color"), color.name());
+    settings.sync();
+}
+
 void Config::setRefreshInterval(int ms)
 {
     m_refreshInterval = std::clamp(ms, 100, 60000);

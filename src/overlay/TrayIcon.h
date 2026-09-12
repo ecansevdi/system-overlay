@@ -1,13 +1,17 @@
 #pragma once
 
+#include <QColor>
 #include <QObject>
 
 class QSystemTrayIcon;
 class QAction;
+class QMenu;
 
 // System tray presence for the HUD (StatusNotifierItem on Plasma): right-click
-// menu with Show/Hide, Pause/Resume and Quit. Keeps the HUD itself completely
-// input-transparent — closing never requires clicking on the overlay.
+// menu with Show/Hide, Pause/Resume, per-row visibility, a colour picker
+// (preset palette, RGB entry, full colour dialog) and Quit. Keeps the HUD
+// itself completely input-transparent — controlling it never requires
+// clicking on the overlay.
 class TrayIcon : public QObject
 {
     Q_OBJECT
@@ -22,6 +26,9 @@ Q_SIGNALS:
 
     // One of the HUD rows (HudRows indices) was toggled in the menu.
     void metricToggled(int row, bool visible);
+
+    // A new base colour (normal text colour) was picked in the menu.
+    void baseColorRequested(const QColor &color);
 
 private:
     void updateActions();

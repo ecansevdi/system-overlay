@@ -22,6 +22,7 @@ MetricManager::MetricManager(const Config &config, QObject *parent)
     m_rowVisible[RowGpu] = config.showGpuUsage() || config.showGpuTemp();
     m_rowVisible[RowRam] = config.showRam();
     m_rowVisible[RowVram] = config.showVram();
+    m_baseColor = QColor(config.textColor());
 
     if (const auto src = HwmonScanner::findCpuTemp())
         m_cpuTemp = *src;
@@ -58,16 +59,24 @@ void MetricManager::setRowVisible(int row, bool visible)
     Q_EMIT rowsChanged(sampleAndFormat());
 }
 
+void MetricManager::setBaseColor(const QColor &color)
+{
+    if (!color.isValid() || color == m_baseColor)
+        return;
+    m_baseColor = color;
+    Q_EMIT rowsChanged(sampleAndFormat());
+}
+
 // The single colour function shared by every percentage-based value:
-// normal text colour below the warning threshold, yellow in the warning
-// band and red at/above the critical threshold.
+// the base colour below the warning threshold, yellow in the warning band
+// and red at/above the critical threshold.
 QColor MetricManager::colorForPercent(double pct) const
 {
     if (pct >= m_config.criticalPct())
         return QColor(m_config.criticalColor());
     if (pct >= m_config.warningPct())
         return QColor(m_config.warningColor());
-    return QColor(m_config.textColor());
+    return m_baseColor;
 }
 
 QList<HudRow> MetricManager::sampleAndFormat()

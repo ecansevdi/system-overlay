@@ -48,6 +48,10 @@ public:
     void setRowVisible(int row, bool visible);
     bool rowVisible(int row) const { return m_rowVisible[row]; }
 
+    // Base (normal-band) text colour, chosen live from the tray menu.
+    // Warning/critical colours keep coming from the config.
+    void setBaseColor(const QColor &color);
+
     // Build the display rows from a fresh sample.
     QList<HudRow> sampleAndFormat();
 
@@ -72,4 +76,5 @@ private:
     HwmonScanner::CpuTempSource m_cpuTemp;
     QList<HudRow> m_currentRows;
     bool m_rowVisible[RowCount] = {true, true, true, true};
+    QColor m_baseColor;
 };

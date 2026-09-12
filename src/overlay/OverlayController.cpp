@@ -113,6 +113,10 @@ void OverlayController::createTrayIcon()
     });
     connect(m_tray, &TrayIcon::pauseRequested, m_metrics, &MetricManager::setPaused);
     connect(m_tray, &TrayIcon::metricToggled, m_metrics, &MetricManager::setRowVisible);
+    connect(m_tray, &TrayIcon::baseColorRequested, this, [this](const QColor &color) {
+        m_metrics->setBaseColor(color);
+        Config::saveTextColor(color); // survives restarts
+    });
     connect(m_tray, &TrayIcon::quitRequested, qGuiApp, &QCoreApplication::quit);
 }
 

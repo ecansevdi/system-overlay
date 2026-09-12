@@ -129,13 +129,21 @@ Run without installing:
 ./build/system-overlay
 ```
 
-## Closing / pausing
+## Closing / pausing / colours
 
 The HUD itself never accepts input (that is the point of a click-through overlay), so it
-ships with a **system tray icon** (painted, no assets): right-click it for
+ships with a **system tray icon** (painted, no assets). Right-click it for:
 
 - **Gizle / Göster** — hide or restore the HUD
 - **Duraklat / Devam et** — freeze/resume metric updates
+- **CPU / GPU / RAM / VRAM** checkboxes — show or hide rows at runtime
+- **Renk ▸** — change the base (normal-band) HUD colour:
+  - preset palette (9 tints, applied instantly),
+  - **RGB gir…** — type a colour as `#RRGGBB`, bare `rrggbb` or `R,G,B` (0-255);
+    invalid input shows a tray notification,
+  - **Renk penceresi…** — the full Qt colour dialog.
+  The choice is saved to `[display] text_color` and survives restarts. Warning/critical
+  alert colours keep coming from `[colors]`.
 - **Çıkış** — quit the application
 
 The tray can be disabled with `[display] show_tray=false` (then the only way to stop the

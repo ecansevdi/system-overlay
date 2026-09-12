@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QString>
 #include <QStringList>
 
@@ -57,6 +58,11 @@ public:
     bool showVram() const { return m_showVram; }
 
     static QString configFilePath();
+
+    // Persist a new base text colour (used by the tray colour picker so the
+    // choice survives restarts). Note: QSettings rewrites the file, losing
+    // the template comments.
+    static void saveTextColor(const QColor &color);
 
 private:
     void writeDefaultConfigFile(const QString &path) const;
