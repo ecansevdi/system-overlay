@@ -17,8 +17,15 @@ OverlayController::OverlayController(const Config &config, MetricManager *metric
     , m_metrics(metrics)
 {
     connect(m_metrics, &MetricManager::textChanged, this, [this](const QString &text) {
-        for (const Entry &e : m_windows)
+        const bool xcb = QGuiApplication::platformName() != QLatin1String("wayland");
+        for (const Entry &e : m_windows) {
             e.window->setText(text);
+            // On X11 the window is self-positioned: recompute whenever the
+            // content (and therefore the window size) changes so a
+            // bottom/right-anchored HUD stays pinned to its corner.
+            if (xcb)
+                X11Overlay::place(e.window.get(), e.screen, m_config);
+        }
     });
 }
 
@@ -72,9 +79,9 @@ void OverlayController::showWindow(OverlayWindow *win, QScreen *screen)
     win->show();
 
     // On X11 (and any non-layer-shell platform) the WM decides the initial
-    // position; pin the window explicitly to the screen's top-left corner.
+    // position; pin the window to the configured screen corner.
     if (QGuiApplication::platformName() != QLatin1String("wayland"))
-        X11Overlay::place(win, screen, m_config.offsetX(), m_config.offsetY());
+        X11Overlay::place(win, screen, m_config);
 }
 
 void OverlayController::removeWindowForScreen(QScreen *screen)
@@ -99,7 +106,7 @@ void OverlayController::start()
             entry.window->show();
         } else {
             entry.window->setScreen(screen);
-            X11Overlay::place(entry.window.get(), screen, m_config.offsetX(), m_config.offsetY());
+            X11Overlay::place(entry.window.get(), screen, m_config);
         }
     });
 

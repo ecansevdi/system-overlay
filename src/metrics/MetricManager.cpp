@@ -131,7 +131,8 @@ QString MetricManager::sampleAndFormat()
             parts.append(QStringLiteral("VRAM: -- GiB"));
     }
 
-    m_currentText = parts.join(QStringLiteral("   "));
+    // One metric per line, rendered as a vertical stack.
+    m_currentText = parts.join(QLatin1Char('\n'));
     if (perfTrace)
         fprintf(stderr, "sample cost: %lld us\n", perfTimer.nsecsElapsed() / 1000);
     return m_currentText;

@@ -1,16 +1,21 @@
 # system-overlay
 
 Lightweight, game-style performance overlay (HUD) for **CachyOS / Arch Linux + KDE Plasma 6**.
-It shows live system statistics in the **top-left corner of the screen**, rendered as a real
-Wayland **layer-shell overlay** so it stays visible above normal windows, maximized windows,
-browser fullscreen (F11) and KWin fullscreen applications — while remaining completely
-transparent to input (click-through, no focus, no keyboard, no taskbar entry).
+It shows live system statistics in the **bottom-right corner of the screen** as a vertical
+stack, rendered as a real Wayland **layer-shell overlay** so it stays visible above normal
+windows, maximized windows, browser fullscreen (F11) and KWin fullscreen applications —
+while remaining completely transparent to input (click-through, no focus, no keyboard,
+no taskbar entry). Bottom-anchored positions automatically stay clear of panels.
 
 ```
-CPU: 4% 53°C   GPU: 4% 49°C   RAM: 5.68 GiB   VRAM: 0.46 GiB
+CPU: 10% 49°C
+GPU: 14% 47°C
+RAM: 6.57 GiB
+VRAM: 0.51 GiB
 ```
 
-<!-- Screenshot: overlay on the desktop (top-left corner, light green monospace text) -->
+<!-- Screenshot: overlay above the Plasma panel in the bottom-right corner,
+     light green monospace text, one metric per line -->
 
 ## What it shows
 
@@ -29,9 +34,12 @@ On KDE Plasma / KWin Wayland the HUD is a **`zwlr_layer_shell` surface with laye
 `overlay`**, created through KDE's **LayerShellQt**:
 
 - layer = **overlay** (above normal windows and fullscreen applications)
-- anchor = **top + left**, margins = configurable offsets (default 10, 10 px)
-- **exclusive zone = −1** → it never reserves screen space and never pushes panels around
-  (it is a HUD, not a panel)
+- anchor = configurable corner, default **bottom + right**, margins = configurable
+  offsets (default 10, 10 px from the anchored edges)
+- **exclusive zone = 0 on bottom corners** → the HUD itself reserves no space but the
+  compositor keeps it above bottom panels (never overlaps the Plasma panel);
+  top corners use −1 (ignore panels entirely). Neither mode pushes other
+  applications around — it stays a HUD, not a panel
 - **keyboard interactivity = none** → it can never take keyboard focus
 - **empty input region** (`wl_surface.set_input_region`) → the compositor itself routes
   all pointer clicks to the applications below, even when clicking exactly on the text
@@ -42,8 +50,8 @@ windows, and click-through cannot be guaranteed at compositor level. Layer-shell
 the mechanism KDE's own panels/OSDs use, and KWin honours it for fullscreen windows.
 
 Verified at protocol level with `WAYLAND_DEBUG=1`: `get_layer_surface(..., layer=3,
-"system-overlay")`, `set_anchor(5)`, `set_exclusive_zone(-1)`, `set_keyboard_interactivity(0)`,
-`set_input_region(<empty>)`.
+"system-overlay")`, `set_anchor(10)` (bottom|right), `set_exclusive_zone(0)`,
+`set_keyboard_interactivity(0)`, `set_input_region(<empty>)`.
 
 ### X11 fallback
 
@@ -149,9 +157,9 @@ refresh_interval=1000          ; ms; 250/500/1000/2000 are sensible values
 
 [display]
 screen=primary                 ; primary | all | output name
-position=top-left              ; only position implemented
-offset_x=10
-offset_y=10
+position=bottom-right          ; top-left | top-right | bottom-left | bottom-right
+offset_x=10                    ; distance from the anchored edge(s)
+offset_y=10                    ; bottom positions also avoid panels
 font_size=14                   ; logical pixels
 font_family=monospace
 show_background=false          ; optional translucent panel behind the text
@@ -202,6 +210,7 @@ cached scan. Text is rasterized once per refresh and blitted on frame updates.
 | Normal / maximized application windows | ✅ stays on top |
 | Browser fullscreen (F11, Chromium-based) | ✅ stays on top |
 | KWin fullscreen application (mpv `--fullscreen`) | ✅ stays on top |
+| Bottom Plasma panel | ✅ HUD sits above it (exclusive-zone avoidance), never overlaps |
 | Click-through (compositor-level empty input region) | ✅ verified in Wayland protocol trace; click lands on the app below |
 | Focus stealing | ✅ none (`keyboard_interactivity=none`, `activateOnShow=false`; active window unchanged) |
 | Taskbar / Alt+Tab | ✅ absent (KWin reports `skipTaskbar/skipSwitcher/skipPager = true` for the layer surface) |

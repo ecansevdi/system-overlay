@@ -11,6 +11,10 @@ class Config
 public:
     enum class ScreenMode { Primary, All, Named };
 
+    // Screen corner the HUD is pinned to. Bottom corners additionally avoid
+    // panels (exclusive zone 0 instead of -1).
+    enum class Position { TopLeft, TopRight, BottomLeft, BottomRight };
+
     void load(const QString &explicitPath = {});
 
     // Command line overrides (applied on top of the file values).
@@ -23,6 +27,11 @@ public:
     const QString &screenName() const { return m_screenName; }
     bool debug() const { return m_debug; }
 
+    Position position() const { return m_position; }
+    bool bottomAnchored() const
+    {
+        return m_position == Position::BottomLeft || m_position == Position::BottomRight;
+    }
     int offsetX() const { return m_offsetX; }
     int offsetY() const { return m_offsetY; }
     int fontSizePx() const { return m_fontSizePx; }
@@ -48,6 +57,7 @@ private:
     QString m_screenName;
     bool m_debug = false;
 
+    Position m_position = Position::BottomRight;
     int m_offsetX = 10;
     int m_offsetY = 10;
     int m_fontSizePx = 14;

@@ -36,6 +36,19 @@ void Config::setScreen(const QString &spec)
     }
 }
 
+static Config::Position parsePosition(const QString &value)
+{
+    const QString s = value.trimmed().toLower();
+    if (s == QLatin1String("top-left"))
+        return Config::Position::TopLeft;
+    if (s == QLatin1String("top-right"))
+        return Config::Position::TopRight;
+    if (s == QLatin1String("bottom-left"))
+        return Config::Position::BottomLeft;
+    // "bottom-right" is the default; unknown values fall back to it too.
+    return Config::Position::BottomRight;
+}
+
 void Config::setDebug(bool on)
 {
     m_debug = on;
@@ -56,6 +69,9 @@ void Config::load(const QString &explicitPath)
     setRefreshInterval(settings.value(QStringLiteral("general/refresh_interval"), 1000).toInt());
 
     setScreen(settings.value(QStringLiteral("display/screen"), QStringLiteral("primary")).toString());
+
+    m_position = parsePosition(
+        settings.value(QStringLiteral("display/position"), QStringLiteral("bottom-right")).toString());
 
     m_offsetX = settings.value(QStringLiteral("display/offset_x"), 10).toInt();
     m_offsetY = settings.value(QStringLiteral("display/offset_y"), 10).toInt();
@@ -98,8 +114,10 @@ void Config::writeDefaultConfigFile(const QString &path) const
         "[display]\n"
         "# screen: primary | all | output name (e.g. DP-1, HDMI-A-1)\n"
         "screen=primary\n"
-        "# position: top-left (only position implemented so far)\n"
-        "position=top-left\n"
+        "# position: top-left | top-right | bottom-left | bottom-right\n"
+        "position=bottom-right\n"
+        "# offsets are measured from the anchored edges (right/bottom for\n"
+        "# bottom-right). Bottom positions also avoid panels.\n"
         "offset_x=10\n"
         "offset_y=10\n"
         "font_size=14\n"

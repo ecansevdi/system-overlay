@@ -22,12 +22,34 @@ bool X11Overlay::configure(OverlayWindow *win, const Config &cfg, QScreen *scree
     return true;
 }
 
-void X11Overlay::place(OverlayWindow *win, QScreen *screen, int offsetX, int offsetY)
+void X11Overlay::place(OverlayWindow *win, QScreen *screen, const Config &cfg)
 {
     if (!screen)
         screen = win->screen();
     if (!screen)
         return;
-    const QPoint topLeft = screen->geometry().topLeft();
-    win->setGeometry(QRect(topLeft + QPoint(offsetX, offsetY), win->size()));
+
+    // availableGeometry() excludes panels that set _NET_WM_STRUT, so the HUD
+    // never overlaps them; the offsets are measured from the anchored edges
+    // (mirroring the Wayland margins).
+    const QRect g = screen->availableGeometry();
+    const int x = cfg.offsetX();
+    const int y = cfg.offsetY();
+
+    QPoint topLeft;
+    switch (cfg.position()) {
+    case Config::Position::TopLeft:
+        topLeft = g.topLeft() + QPoint(x, y);
+        break;
+    case Config::Position::TopRight:
+        topLeft = QPoint(g.right() - win->width() - x, g.top() + y);
+        break;
+    case Config::Position::BottomLeft:
+        topLeft = QPoint(g.left() + x, g.bottom() - win->height() - y);
+        break;
+    case Config::Position::BottomRight:
+        topLeft = QPoint(g.right() - win->width() - x, g.bottom() - win->height() - y);
+        break;
+    }
+    win->setGeometry(QRect(topLeft, win->size()));
 }
