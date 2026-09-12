@@ -28,6 +28,15 @@ public:
     void start();
     void setInterval(int ms);
 
+    // Pause/resume metric updates (values stay as of the last refresh).
+    void setPaused(bool paused)
+    {
+        if (paused)
+            m_timer->stop();
+        else
+            m_timer->start(m_config.refreshInterval());
+    }
+
     // Build the display string from a fresh sample (also used by --once).
     QString sampleAndFormat();
 

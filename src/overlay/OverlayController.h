@@ -11,8 +11,9 @@
 
 class MetricManager;
 class QScreen;
+class TrayIcon;
 
-// Owns the overlay window(s) and the screen-following logic.
+// Owns the overlay window(s), the screen-following logic and the tray icon.
 // First release: primary monitor. The screen mode ("primary" / "all" / output
 // name) is already wired here; "all" creates one overlay per screen.
 class OverlayController : public QObject
@@ -29,9 +30,11 @@ private:
     void removeWindowForScreen(QScreen *screen);
     void showWindow(OverlayWindow *win, QScreen *screen);
     bool applyLayerShell(OverlayWindow *win, QScreen *screen);
+    void createTrayIcon();
 
     const Config &m_config;
     MetricManager *m_metrics = nullptr;
+    TrayIcon *m_tray = nullptr;
 
     struct Entry
     {

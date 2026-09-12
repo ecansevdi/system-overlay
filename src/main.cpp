@@ -1,5 +1,5 @@
+#include <QApplication>
 #include <QCommandLineParser>
-#include <QGuiApplication>
 
 #include "config/Config.h"
 #include "metrics/MetricManager.h"
@@ -11,7 +11,8 @@
 
 int main(int argc, char *argv[])
 {
-    QGuiApplication app(argc, argv);
+    // QApplication (not QGuiApplication): the tray icon uses widgets.
+    QApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("system-overlay"));
     QGuiApplication::setApplicationVersion(QStringLiteral(SYSTEM_OVERLAY_VERSION));
     QGuiApplication::setOrganizationName(QStringLiteral("system-overlay"));

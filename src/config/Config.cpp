@@ -80,6 +80,7 @@ void Config::load(const QString &explicitPath)
     m_fontFamily = settings.value(QStringLiteral("display/font_family"), QStringLiteral("monospace"))
                        .toString();
     m_showBackground = settings.value(QStringLiteral("display/show_background"), false).toBool();
+    m_showTray = settings.value(QStringLiteral("display/show_tray"), true).toBool();
     m_textColor = settings.value(QStringLiteral("display/text_color"), m_textColor).toString();
     m_outlineColor = settings.value(QStringLiteral("display/outline_color"), m_outlineColor).toString();
 
@@ -123,6 +124,7 @@ void Config::writeDefaultConfigFile(const QString &path) const
         "font_size=14\n"
         "font_family=monospace\n"
         "show_background=false\n"
+        "show_tray=true\n"
         "text_color=#a6f28f\n"
         "outline_color=#000000\n"
         "\n"

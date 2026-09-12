@@ -1,5 +1,6 @@
 #include "OverlayController.h"
 
+#include "TrayIcon.h"
 #include "WaylandOverlay.h"
 #include "X11Overlay.h"
 #include "metrics/MetricManager.h"
@@ -91,8 +92,33 @@ void OverlayController::removeWindowForScreen(QScreen *screen)
         m_windows.end());
 }
 
+void OverlayController::createTrayIcon()
+{
+    if (!m_config.showTray() || m_tray)
+        return;
+
+    m_tray = new TrayIcon(this);
+
+    connect(m_tray, &TrayIcon::hideRequested, this, [this]() {
+        for (const Entry &e : m_windows)
+            e.window->hide();
+    });
+    connect(m_tray, &TrayIcon::showRequested, this, [this]() {
+        const bool xcb = QGuiApplication::platformName() != QLatin1String("wayland");
+        for (const Entry &e : m_windows) {
+            e.window->show();
+            if (xcb)
+                X11Overlay::place(e.window.get(), e.screen, m_config);
+        }
+    });
+    connect(m_tray, &TrayIcon::pauseRequested, m_metrics, &MetricManager::setPaused);
+    connect(m_tray, &TrayIcon::quitRequested, qGuiApp, &QCoreApplication::quit);
+}
+
 void OverlayController::start()
 {
+    createTrayIcon();
+
     connect(qGuiApp, &QGuiApplication::primaryScreenChanged, this, [this](QScreen *screen) {
         if (m_config.screenMode() != Config::ScreenMode::Primary || m_windows.empty())
             return;

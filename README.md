@@ -121,6 +121,18 @@ Run without installing:
 ./build/system-overlay
 ```
 
+## Closing / pausing
+
+The HUD itself never accepts input (that is the point of a click-through overlay), so it
+ships with a **system tray icon** (painted, no assets): right-click it for
+
+- **Gizle / Göster** — hide or restore the HUD
+- **Duraklat / Devam et** — freeze/resume metric updates
+- **Çıkış** — quit the application
+
+The tray can be disabled with `[display] show_tray=false` (then the only way to stop the
+app is `killall system-overlay`).
+
 ## Command line
 
 ```
@@ -163,6 +175,7 @@ offset_y=10                    ; bottom positions also avoid panels
 font_size=14                   ; logical pixels
 font_family=monospace
 show_background=false          ; optional translucent panel behind the text
+show_tray=true                 ; tray icon (hide/restore/pause/quit menu)
 text_color=#a6f28f
 outline_color=#000000
 
@@ -257,7 +270,8 @@ src/
   gpu/                        GpuDiscovery (DRM cards), GpuBackend interface,
                               AmdGpuBackend, IntelGpuBackend, NvidiaGpuBackend, GpuMetrics
   overlay/                    OverlayWindow (QWindow+QBackingStore renderer),
-                              WaylandOverlay (LayerShellQt), X11Overlay, OverlayController
+                              WaylandOverlay (LayerShellQt), X11Overlay, OverlayController,
+                              TrayIcon (system tray: hide/pause/quit)
 resources/system-overlay.desktop.in
 contrib/system-overlay.service
 ```

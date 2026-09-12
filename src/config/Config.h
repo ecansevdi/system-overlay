@@ -34,6 +34,7 @@ public:
     }
     int offsetX() const { return m_offsetX; }
     int offsetY() const { return m_offsetY; }
+    bool showTray() const { return m_showTray; }
     int fontSizePx() const { return m_fontSizePx; }
     const QString &fontFamily() const { return m_fontFamily; }
     bool showBackground() const { return m_showBackground; }
@@ -60,6 +61,7 @@ private:
     Position m_position = Position::BottomRight;
     int m_offsetX = 10;
     int m_offsetY = 10;
+    bool m_showTray = true;
     int m_fontSizePx = 14;
     QString m_fontFamily = QStringLiteral("monospace");
     bool m_showBackground = false;
