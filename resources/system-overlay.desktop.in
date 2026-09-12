@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=System Overlay
+GenericName=Performance Overlay
+Comment=Lightweight HUD showing CPU, GPU, RAM and VRAM usage in the top-left corner
+Exec=system-overlay
+TryExec=system-overlay
+Terminal=false
+Categories=System;Monitor;Utility;
+StartupNotify=false
+X-KDE-StartupNotify=false

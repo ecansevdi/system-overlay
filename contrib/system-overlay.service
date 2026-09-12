@@ -1,0 +1,13 @@
+[Unit]
+Description=System Overlay (CPU/GPU/RAM/VRAM HUD)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/system-overlay
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
