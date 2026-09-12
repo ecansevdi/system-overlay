@@ -14,21 +14,23 @@ namespace {
 
 // Preset palette offered in the tray menu (light tints that read well on
 // dark backgrounds; the dark outline keeps them legible on light ones).
+// Names are plain English/ASCII; entries are always converted with
+// QString::fromUtf8 so non-ASCII names would still render correctly.
 struct PaletteEntry
 {
     const char *name;
     const char *hex;
 };
 constexpr PaletteEntry kPalette[] = {
-    { "Yeşil",    "#a6f28f" },
-    { "Sarı",     "#f2d24f" },
-    { "Turuncu",  "#f2a25d" },
-    { "Kırmızı",  "#f25d5d" },
-    { "Pembe",    "#f25dc8" },
-    { "Mor",      "#b05df2" },
-    { "Mavi",     "#5da8f2" },
-    { "Camgöbeği", "#5df2e1" },
-    { "Beyaz",    "#f2f2f2" },
+    { "Green",  "#a6f28f" },
+    { "Yellow", "#f2d24f" },
+    { "Orange", "#f2a25d" },
+    { "Red",    "#f25d5d" },
+    { "Pink",   "#f25dc8" },
+    { "Purple", "#b05df2" },
+    { "Blue",   "#5da8f2" },
+    { "Cyan",   "#5df2e1" },
+    { "White",  "#f2f2f2" },
 };
 
 QPixmap swatchPixmap(const QColor &color)
@@ -125,8 +127,10 @@ TrayIcon::TrayIcon(QObject *parent)
     // Colour picker: preset palette, manual RGB entry and a full dialog.
     QMenu *colorMenu = menu->addMenu(QStringLiteral("Renk"));
     for (const PaletteEntry &entry : kPalette) {
+        // fromUtf8, NOT QLatin1String: Latin-1 would mojibake any non-ASCII
+        // name (the "YeÅŸil" bug).
         QAction *swatch = colorMenu->addAction(swatchPixmap(QColor(entry.hex)),
-            QLatin1String(entry.name));
+            QString::fromUtf8(entry.name));
         connect(swatch, &QAction::triggered, this, [this, entry]() {
             Q_EMIT baseColorRequested(QColor(entry.hex));
         });
