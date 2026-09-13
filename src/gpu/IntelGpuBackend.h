@@ -38,8 +38,9 @@ private:
     struct ClientStat
     {
         std::chrono::nanoseconds engineNs{0};
-        quint64 localTotal = 0;  // drm-total-local0 (bytes)
-        quint64 localShared = 0; // drm-shared-local0 (bytes, subset of total)
+        quint64 localTotal = 0;     // drm-total-local0 (bytes, includes objects spilled to system RAM)
+        quint64 localResident = 0;  // drm-resident-local0 (bytes actually backed by VRAM)
+        quint64 localShared = 0;    // drm-shared-local0 (bytes, subset of total)
     };
 
     struct Snapshot

@@ -211,6 +211,7 @@ IntelGpuBackend::ScanResult IntelGpuBackend::snapshotFromFdList(
         bool clientIdSeen = false;
         bool pdevMatches = true;
         quint64 localBytes = 0;
+        quint64 residentBytes = 0;
         quint64 sharedBytes = 0;
         bool totalLocalSeen = false;
         bool sharedLocalSeen = false;
@@ -249,6 +250,16 @@ IntelGpuBackend::ScanResult IntelGpuBackend::snapshotFromFdList(
                         localBytes = *bytes;
                         totalLocalSeen = true;
                     }
+                }
+            } else if (key == QLatin1String("drm-resident-local0")) {
+                // Physically backed by VRAM: during "spill" workloads (model
+                // larger than VRAM) total-local0 keeps counting objects that
+                // were evicted to system RAM, so residency is the truthful
+                // usage figure.
+                if (const auto bytes = parseFdinfoSize(value)) {
+                    residentBytes = *bytes;
+                    residentBytes = std::min(residentBytes, localBytes > 0 ? localBytes
+                                                                           : residentBytes);
                 }
             } else if (key == QLatin1String("drm-shared-local0")) {
                 if (!sharedLocalSeen) {
@@ -291,24 +302,27 @@ IntelGpuBackend::ScanResult IntelGpuBackend::snapshotFromFdList(
         ClientStat stat;
         stat.engineNs = std::chrono::nanoseconds(engineNs);
         stat.localTotal = localBytes;
+        stat.localResident = residentBytes;
         stat.localShared = std::min(sharedBytes, localBytes); // shared ⊆ total
         result.snap.clients.insert(clientId, stat);
     }
 
     // Raw Σ(drm-total-local0) double counts every buffer shared between
     // clients (compositor surfaces shared with every app, dma-buf imports,
-    // ...) — under heavy desktop workloads that inflated the reading beyond
-    // the physical VRAM size (e.g. "15.6/8.0 GiB"). Estimate instead:
-    // count each client's private memory once, then add ONE copy of the
-    // largest shared pool. Multiple independent shared pools are still
-    // under-counted, so this stays an approximation (documented in README);
-    // it is, however, tightly bounded instead of unboundedly inflated.
+    // ...) and keeps counting objects that i915 spilled to system RAM when a
+    // workload exceeds VRAM — together this inflated the reading far beyond
+    // the physical size (e.g. "15.6/8.0 GiB" on an 8 GiB card). Estimate
+    // instead from RESIDENCY (physically VRAM-backed bytes): count each
+    // client's private residency once, then add ONE copy of the largest
+    // shared pool. Multiple independent shared pools are still under-counted,
+    // so this stays an approximation (documented in README); it is, however,
+    // tightly bounded instead of unboundedly inflated.
     quint64 privateSum = 0;
     quint64 maxShared = 0;
     for (auto it = result.snap.clients.cbegin(); it != result.snap.clients.cend(); ++it) {
-        const quint64 total = it.value().localTotal;
+        const quint64 resident = it.value().localResident;
         const quint64 shared = it.value().localShared;
-        privateSum += (total > shared) ? (total - shared) : 0;
+        privateSum += (resident > shared) ? (resident - shared) : 0;
         maxShared = std::max(maxShared, shared);
     }
     result.snap.vramBytes = privateSum + maxShared;
@@ -356,7 +370,7 @@ GpuSample IntelGpuBackend::sample()
         // Hard guarantee: the estimate must never exceed the physical size
         // (the fdinfo approximation can still slightly overcount under
         // heavy multi-client sharing).
-        s.vramUsedGiB = std::min(s.vramUsedGiB, m_vramTotalGiB);
+        s.vramUsedGiB = std::min(s.vramUsedGiB.value_or(0.0), m_vramTotalGiB);
     }
 
     const auto now = std::chrono::steady_clock::now();
