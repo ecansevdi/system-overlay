@@ -211,7 +211,9 @@ IntelGpuBackend::ScanResult IntelGpuBackend::snapshotFromFdList(
         bool clientIdSeen = false;
         bool pdevMatches = true;
         quint64 localBytes = 0;
+        quint64 sharedBytes = 0;
         bool totalLocalSeen = false;
+        bool sharedLocalSeen = false;
         quint64 engineNs = 0;
 
         // Never gate the loop on atEnd(): procfs files report size 0, so
@@ -248,6 +250,13 @@ IntelGpuBackend::ScanResult IntelGpuBackend::snapshotFromFdList(
                         totalLocalSeen = true;
                     }
                 }
+            } else if (key == QLatin1String("drm-shared-local0")) {
+                if (!sharedLocalSeen) {
+                    if (const auto bytes = parseFdinfoSize(value)) {
+                        sharedBytes = *bytes;
+                        sharedLocalSeen = true;
+                    }
+                }
             } else if (key.startsWith(QLatin1String("drm-engine-"))) {
                 // Only cumulative times carry an "ns" suffix; metadata keys
                 // such as "drm-engine-capacity-video: 2" must not count.
@@ -279,9 +288,30 @@ IntelGpuBackend::ScanResult IntelGpuBackend::snapshotFromFdList(
             continue;
         seenClients.insert(clientId);
 
-        result.snap.clients.insert(clientId, EngineTime{std::chrono::nanoseconds(engineNs)});
-        result.snap.vramBytes += localBytes;
+        ClientStat stat;
+        stat.engineNs = std::chrono::nanoseconds(engineNs);
+        stat.localTotal = localBytes;
+        stat.localShared = std::min(sharedBytes, localBytes); // shared ⊆ total
+        result.snap.clients.insert(clientId, stat);
     }
+
+    // Raw Σ(drm-total-local0) double counts every buffer shared between
+    // clients (compositor surfaces shared with every app, dma-buf imports,
+    // ...) — under heavy desktop workloads that inflated the reading beyond
+    // the physical VRAM size (e.g. "15.6/8.0 GiB"). Estimate instead:
+    // count each client's private memory once, then add ONE copy of the
+    // largest shared pool. Multiple independent shared pools are still
+    // under-counted, so this stays an approximation (documented in README);
+    // it is, however, tightly bounded instead of unboundedly inflated.
+    quint64 privateSum = 0;
+    quint64 maxShared = 0;
+    for (auto it = result.snap.clients.cbegin(); it != result.snap.clients.cend(); ++it) {
+        const quint64 total = it.value().localTotal;
+        const quint64 shared = it.value().localShared;
+        privateSum += (total > shared) ? (total - shared) : 0;
+        maxShared = std::max(maxShared, shared);
+    }
+    result.snap.vramBytes = privateSum + maxShared;
     return result;
 }
 
@@ -321,8 +351,13 @@ GpuSample IntelGpuBackend::sample()
 
     const Snapshot snap = scanFdInfo();
     s.vramUsedGiB = snap.vramBytes / (1024.0 * 1024.0 * 1024.0);
-    if (m_vramTotalGiB > 0)
+    if (m_vramTotalGiB > 0) {
         s.vramTotalGiB = m_vramTotalGiB;
+        // Hard guarantee: the estimate must never exceed the physical size
+        // (the fdinfo approximation can still slightly overcount under
+        // heavy multi-client sharing).
+        s.vramUsedGiB = std::min(s.vramUsedGiB, m_vramTotalGiB);
+    }
 
     const auto now = std::chrono::steady_clock::now();
     if (m_hasPrev && m_prevWall) {
@@ -334,7 +369,8 @@ GpuSample IntelGpuBackend::sample()
                 const auto prev = m_prevClients.constFind(it.key());
                 if (prev == m_prevClients.cend())
                     continue; // new client: skip to avoid counting startup burst
-                const qint64 delta = it.value().total.count() - prev.value().total.count();
+                const qint64 delta =
+                    it.value().engineNs.count() - prev.value().engineNs.count();
                 if (delta > 0)
                     busyNs += static_cast<quint64>(delta);
             }
@@ -358,7 +394,8 @@ QString IntelGpuBackend::debugInfo() const
        << m_card.pciAddress << ", card" << m_card.index << ")\n";
     ts << "  utilization source: /proc/*/fdinfo drm-engine-{render,compute,copy}"
           " (sum of client deltas)\n";
-    ts << "  VRAM source: /proc/*/fdinfo drm-total-local0 (sum over clients, approximate)\n";
+    ts << "  VRAM source: /proc/*/fdinfo drm-total-local0 with shared-buffer"
+          " de-duplication (Σ private + largest shared pool; approximate)\n";
     ts << "  VRAM total: "
        << (m_vramTotalGiB > 0 ? QStringLiteral("%1 GiB (largest PCI memory BAR)")
                                     .arg(m_vramTotalGiB, 0, 'f', 1)

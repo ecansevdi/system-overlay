@@ -92,10 +92,13 @@ connectors and `boot_vga`; `card0` is *not* assumed to be the gaming GPU).
   (`drm-engine-render/compute/copy`, deduplicated by `drm-client-id`) divided by wall
   time. Video-engine time is not counted. Processes of other users cannot be read
   without root and are skipped.
-- VRAM: sum of `drm-total-local0` across clients. There is no userspace-wide VRAM
-  counter on i915 (AMD's `mem_info_vram_*` is AMD-only), so this is an **approximation**:
-  buffers shared between clients may be counted once per client, and VRAM used by
-  root-owned processes is invisible.
+- VRAM: shared-buffer-aware estimate from `/proc/*/fdinfo` — raw client sums
+  double count every buffer shared between clients (compositor surfaces,
+  dma-buf imports) and can inflate far beyond the physical size, so the HUD
+  computes `Σ max(0, total−shared) + largest shared pool` and clamps the
+  result to the physical size. Still an approximation: multiple independent
+  shared pools are under-counted and VRAM used by root-owned processes is
+  invisible.
 - i915 PMU (`engine-busy` counters) would give exact utilization but requires
   `perf_event_paranoid ≤ 1`; the fdinfo method needs no privileges.
 - Unknown GPUs simply show `--` values; the application never crashes on them.

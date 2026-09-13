@@ -35,14 +35,16 @@ public:
     QString debugInfo() const override;
 
 private:
-    struct EngineTime
+    struct ClientStat
     {
-        std::chrono::nanoseconds total{0};
+        std::chrono::nanoseconds engineNs{0};
+        quint64 localTotal = 0;  // drm-total-local0 (bytes)
+        quint64 localShared = 0; // drm-shared-local0 (bytes, subset of total)
     };
 
     struct Snapshot
     {
-        QHash<quint64, EngineTime> clients; // key: drm-client-id
+        QHash<quint64, ClientStat> clients; // key: drm-client-id
         quint64 vramBytes = 0;
     };
 
@@ -71,7 +73,7 @@ private:
     QList<QPair<int, QString>> m_cachedFds;
     std::chrono::steady_clock::time_point m_lastFullScan;
 
-    QHash<quint64, EngineTime> m_prevClients;
+    QHash<quint64, ClientStat> m_prevClients;
     bool m_hasPrev = false;
     std::optional<std::chrono::steady_clock::time_point> m_prevWall;
 };
