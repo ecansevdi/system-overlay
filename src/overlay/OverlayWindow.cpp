@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 namespace {
 constexpr int kBarHeight = 3; // thin bar under each row
@@ -49,7 +50,7 @@ void OverlayWindow::setRenderConfig(const RenderConfig &config)
     scheduleRender();
 }
 
-void OverlayWindow::setRows(const QList<HudRow> &rows)
+void OverlayWindow::setRows(const std::vector<HudRow> &rows)
 {
     if (m_rows == rows)
         return;
@@ -62,15 +63,23 @@ QSize OverlayWindow::computeSizeHint() const
 {
     const QFontMetrics fm(m_cfg.font);
 
-    int widest = 0;
-    for (const HudRow &row : m_rows)
-        widest = std::max(widest, fm.horizontalAdvance(row.text));
+    // Same computation as the renderer below: aligned label field + one
+    // space + widest value.
+    int widestLabel = 0;
+    int widestValue = 0;
+    for (const HudRow &row : m_rows) {
+        widestLabel = std::max(widestLabel, fm.horizontalAdvance(row.label));
+        widestValue = std::max(widestValue, fm.horizontalAdvance(row.value));
+    }
+    int widest = widestLabel + widestValue;
+    if (widestLabel > 0 && widestValue > 0)
+        widest += fm.horizontalAdvance(QLatin1Char(' '));
     if (widest == 0)
         widest = fm.horizontalAdvance(QStringLiteral(" "));
 
     const qreal pad = m_cfg.outlineWidth / 2.0 + m_cfg.shadowOffset + 2.0;
     const int rowH = fm.height() + kBarHeight + kBarGap;
-    const int count = m_rows.isEmpty() ? 1 : m_rows.size();
+    const int count = m_rows.empty() ? 1 : int(m_rows.size());
     return QSize(int(std::ceil(widest + 2 * pad)), int(std::ceil(count * rowH + 2 * pad)));
 }
 
@@ -133,8 +142,8 @@ void OverlayWindow::renderNow()
         + QString::number(devicePixelRatio()) + QLatin1Char('#')
         + QString::number(m_cfg.showBackground);
     for (const HudRow &row : m_rows) {
-        cacheKey += QLatin1Char('|') + row.text + QString::number(row.fraction, 'f', 3)
-            + row.color.name();
+        cacheKey += QLatin1Char('|') + row.label + QLatin1Char('|') + row.value
+            + QString::number(row.fraction, 'f', 3) + row.color.name();
     }
 
     if (m_textCache.isNull() || m_textCache.size() != physical || m_cacheKey != cacheKey) {
@@ -175,37 +184,51 @@ void OverlayWindow::renderTextToImage(QImage &image)
     const qreal pad = m_cfg.outlineWidth / 2.0 + m_cfg.shadowOffset + 2.0;
     const int rowH = fm.height() + kBarHeight + kBarGap;
 
-    int widest = 0;
-    for (const HudRow &row : m_rows)
-        widest = std::max(widest, fm.horizontalAdvance(row.text));
-    if (widest == 0)
-        widest = fm.horizontalAdvance(QStringLiteral(" "));
+    // Shared bar width: aligned label field + widest value, so every bar in
+    // the HUD has the same length.
+    int labelFieldW = 0;
+    int widestValue = 0;
+    for (const HudRow &row : m_rows) {
+        labelFieldW = std::max(labelFieldW, fm.horizontalAdvance(row.label));
+        widestValue = std::max(widestValue, fm.horizontalAdvance(row.value));
+    }
+    // label already contains ": " (the padded field); add one extra space so
+    // values are visually separated from the longest label too.
+    const int labelW = labelFieldW + fm.horizontalAdvance(QLatin1Char(' '));
+    const int widest = labelW + widestValue;
 
     QPen outlinePen(m_cfg.outlineColor, m_cfg.outlineWidth);
     outlinePen.setJoinStyle(Qt::RoundJoin);
     outlinePen.setCapStyle(Qt::RoundCap);
 
-    for (int i = 0; i < m_rows.size(); ++i) {
+    for (std::vector<HudRow>::size_type i = 0; i < m_rows.size(); ++i) {
         const HudRow &row = m_rows.at(i);
         const qreal rowTop = pad + i * rowH;
         const qreal baseline = rowTop + fm.ascent();
 
-        QPainterPath path;
-        path.addText(QPointF(pad, baseline), m_cfg.font, row.text);
+        // Label and value are drawn as separate paths so the labels align
+        // across rows: same left origin, labels already padded to a common
+        // character count by MetricManager (monospace -> equal advance).
+        QPainterPath labelPath;
+        labelPath.addText(QPointF(pad, baseline), m_cfg.font, row.label);
+        QPainterPath valuePath;
+        valuePath.addText(QPointF(pad + labelW, baseline), m_cfg.font, row.value);
+
+        const QPainterPath combined = labelPath.united(valuePath);
 
         // 1) offset shadow
         p.save();
         p.translate(m_cfg.shadowOffset, m_cfg.shadowOffset);
         p.setPen(Qt::NoPen);
         p.setBrush(m_cfg.shadowColor);
-        p.drawPath(path);
+        p.drawPath(combined);
         p.restore();
 
         // 2) dark outline
-        p.strokePath(path, outlinePen);
+        p.strokePath(combined, outlinePen);
 
         // 3) value colour fill (normal / warning / critical)
-        p.fillPath(path, row.color.isValid() ? row.color : m_cfg.textColor);
+        p.fillPath(combined, row.color.isValid() ? row.color : m_cfg.textColor);
 
         // 4) thin progress bar under the text (empty track when the metric
         //    has no percentage right now)

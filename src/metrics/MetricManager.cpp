@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 MetricManager::MetricManager(const Config &config, QObject *parent)
     : QObject(parent)
@@ -22,6 +23,7 @@ MetricManager::MetricManager(const Config &config, QObject *parent)
     m_rowVisible[RowGpu] = config.showGpuUsage() || config.showGpuTemp();
     m_rowVisible[RowRam] = config.showRam();
     m_rowVisible[RowVram] = config.showVram();
+    m_rowVisible[RowNet] = config.showNet();
     m_baseColor = QColor(config.textColor());
 
     if (const auto src = HwmonScanner::findCpuTemp())
@@ -31,12 +33,16 @@ MetricManager::MetricManager(const Config &config, QObject *parent)
 
     if (!m_gpu.discover())
         qWarning("MetricManager: no supported GPU backend (will show \"--\" for GPU metrics)");
+
+    if (m_rowVisible[RowNet])
+        m_net.prime();
 }
 
 void MetricManager::prime()
 {
     m_cpu.prime();
     m_gpu.prime();
+    m_net.prime();
 }
 
 void MetricManager::start()
@@ -55,6 +61,8 @@ void MetricManager::setRowVisible(int row, bool visible)
     if (row < 0 || row >= RowCount || m_rowVisible[row] == visible)
         return;
     m_rowVisible[row] = visible;
+    if (row == RowNet && visible)
+        m_net.prime(); // fresh delta base so the row does not show a stale spike
     // Refresh immediately so the HUD reacts without waiting for the next tick.
     Q_EMIT rowsChanged(sampleAndFormat());
 }
@@ -79,14 +87,14 @@ QColor MetricManager::colorForPercent(double pct) const
     return m_baseColor;
 }
 
-QList<HudRow> MetricManager::sampleAndFormat()
+std::vector<HudRow> MetricManager::sampleAndFormat()
 {
     static const bool perfTrace = qEnvironmentVariableIsSet("SYSTEM_OVERLAY_PERF");
     QElapsedTimer perfTimer;
     if (perfTrace)
         perfTimer.start();
 
-    QList<HudRow> rows;
+    std::vector<HudRow> rows;
 
     const bool needGpuSample = m_config.showGpuUsage() || m_config.showGpuTemp() || m_config.showVram()
         || m_rowVisible[RowGpu] || m_rowVisible[RowVram];
@@ -117,7 +125,7 @@ QList<HudRow> MetricManager::sampleAndFormat()
             row.text += QStringLiteral(" --°C");
         if (!row.color.isValid())
             row.color = colorForPercent(0);
-        rows.append(row);
+        rows.push_back(std::move(row));
     }
 
     if (m_rowVisible[RowGpu] && (m_config.showGpuUsage() || m_config.showGpuTemp())) {
@@ -140,7 +148,7 @@ QList<HudRow> MetricManager::sampleAndFormat()
         }
         if (!row.color.isValid())
             row.color = colorForPercent(0);
-        rows.append(row);
+        rows.push_back(std::move(row));
     }
 
     if (m_rowVisible[RowRam]) {
@@ -159,7 +167,7 @@ QList<HudRow> MetricManager::sampleAndFormat()
         }
         if (!row.color.isValid())
             row.color = colorForPercent(0);
-        rows.append(row);
+        rows.push_back(std::move(row));
     }
 
     if (m_rowVisible[RowVram]) {
@@ -180,8 +188,31 @@ QList<HudRow> MetricManager::sampleAndFormat()
         }
         if (!row.color.isValid())
             row.color = colorForPercent(0);
-        rows.append(row);
+        rows.push_back(std::move(row));
     }
+
+    if (m_rowVisible[RowNet]) {
+        HudRow row;
+        row.text = QStringLiteral("NET:");
+        if (const auto net = m_net.sample()) {
+            // User-facing line speed from [metrics] net_link_mbit (e.g. a
+            // 1000 Mbit/s line -> 125 MB/s). Bars scale 0..that value.
+            const double maxMbps = NetMetrics::maxMBpsFromMbit(m_config.netLinkMbit());
+            row.text += QStringLiteral(" %1 MB/s").arg(net->megaBytesPerSecond, 0, 'f', 1);
+            row.fraction = std::clamp(net->megaBytesPerSecond / maxMbps, 0.0, 1.0);
+            row.color = colorForPercent(100.0 * net->megaBytesPerSecond / maxMbps);
+        } else {
+            row.text += QStringLiteral(" -- MB/s");
+        }
+        if (!row.color.isValid())
+            row.color = colorForPercent(0);
+        rows.push_back(std::move(row));
+    }
+
+    // Dynamic label alignment: pad every "LABEL:" prefix to the width of the
+    // widest visible label (monospace font -> equal advance). Done here, once,
+    // so any future metric with the "NAME: value" shape aligns automatically.
+    alignHudRows(rows);
 
     m_currentRows = rows;
     if (perfTrace)

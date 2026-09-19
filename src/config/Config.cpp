@@ -108,6 +108,9 @@ void Config::load(const QString &explicitPath)
     m_showGpuTemp = settings.value(QStringLiteral("metrics/show_gpu_temp"), true).toBool();
     m_showRam = settings.value(QStringLiteral("metrics/show_ram"), true).toBool();
     m_showVram = settings.value(QStringLiteral("metrics/show_vram"), true).toBool();
+    m_showNet = settings.value(QStringLiteral("metrics/show_net"), true).toBool();
+    m_netLinkMbit = std::clamp(
+        settings.value(QStringLiteral("metrics/net_link_mbit"), 1000.0).toDouble(), 0.0, 1000000.0);
 }
 
 void Config::writeDefaultConfigFile(const QString &path) const
@@ -161,5 +164,9 @@ void Config::writeDefaultConfigFile(const QString &path) const
         "show_gpu_usage=true\n"
         "show_gpu_temp=true\n"
         "show_ram=true\n"
-        "show_vram=true\n");
+        "show_vram=true\n"
+        "show_net=true\n"
+        "# Nominal line speed (Mbit/s) used as the NET bar's full scale:\n"
+        "# 1000 Mbit/s line -> 125 MB/s. 0 hides the NET bar.\n"
+        "net_link_mbit=1000\n");
 }

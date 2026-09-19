@@ -9,9 +9,11 @@
 #include "metrics/CpuMetrics.h"
 #include "metrics/HudRow.h"
 #include "metrics/MemoryMetrics.h"
+#include "metrics/NetMetrics.h"
 #include "sensors/HwmonScanner.h"
 
 #include <optional>
+#include <vector>
 
 // Drives metric collection on a QTimer and renders the HUD rows.
 // All reads happen in the main thread: every source used here is a tiny
@@ -53,16 +55,16 @@ public:
     void setBaseColor(const QColor &color);
 
     // Build the display rows from a fresh sample.
-    QList<HudRow> sampleAndFormat();
+    std::vector<HudRow> sampleAndFormat();
 
     // Last rendered rows (so windows can initialize before the first tick).
-    QList<HudRow> currentRows() const { return m_currentRows; }
+    const std::vector<HudRow> &currentRows() const { return m_currentRows; }
 
     // Sensor/source discovery dump for --debug.
     QString debugInfo() const;
 
 Q_SIGNALS:
-    void rowsChanged(const QList<HudRow> &rows);
+    void rowsChanged(const std::vector<HudRow> &rows);
 
 private:
     QColor colorForPercent(double pct) const;
@@ -72,9 +74,10 @@ private:
 
     CpuMetrics m_cpu;
     MemoryMetrics m_memory;
+    NetMetrics m_net;
     GpuMetrics m_gpu;
     HwmonScanner::CpuTempSource m_cpuTemp;
-    QList<HudRow> m_currentRows;
-    bool m_rowVisible[RowCount] = {true, true, true, true};
+    std::vector<HudRow> m_currentRows;
+    bool m_rowVisible[RowCount] = {true, true, true, true, true};
     QColor m_baseColor;
 };

@@ -17,7 +17,7 @@ OverlayController::OverlayController(const Config &config, MetricManager *metric
     , m_config(config)
     , m_metrics(metrics)
 {
-    connect(m_metrics, &MetricManager::rowsChanged, this, [this](const QList<HudRow> &rows) {
+    connect(m_metrics, &MetricManager::rowsChanged, this, [this](const std::vector<HudRow> &rows) {
         const bool xcb = QGuiApplication::platformName() != QLatin1String("wayland");
         for (const Entry &e : m_windows) {
             e.window->setRows(rows);

@@ -36,7 +36,7 @@ private:
     QSystemTrayIcon *m_tray = nullptr;
     QAction *m_visibilityAction = nullptr;
     QAction *m_pauseAction = nullptr;
-    QAction *m_metricActions[4] = {nullptr, nullptr, nullptr, nullptr};
+    QAction *m_metricActions[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};
     bool m_visible = true;
     bool m_paused = false;
 };

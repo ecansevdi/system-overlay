@@ -56,6 +56,11 @@ public:
     bool showGpuTemp() const { return m_showGpuTemp; }
     bool showRam() const { return m_showRam; }
     bool showVram() const { return m_showVram; }
+    bool showNet() const { return m_showNet; }
+
+    // Nominal line speed in Mbit/s, used as the NET bar's full scale.
+    // 1000 Mbit/s -> 125 MB/s. 0 disables the bar (text-only row).
+    double netLinkMbit() const { return m_netLinkMbit; }
 
     static QString configFilePath();
 
@@ -93,4 +98,6 @@ private:
     bool m_showGpuTemp = true;
     bool m_showRam = true;
     bool m_showVram = true;
+    bool m_showNet = true;
+    double m_netLinkMbit = 1000.0;
 };

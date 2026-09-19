@@ -8,19 +8,23 @@ while remaining completely transparent to input (click-through, no focus, no key
 no taskbar entry). Bottom-anchored positions automatically stay clear of panels.
 
 ```
-CPU: 10% 49°C
-GPU: 14% 47°C
-RAM: 5.4/31.3 GiB
+CPU:  10% 49°C
+GPU:  14% 47°C
+RAM:  5.4/31.3 GiB
 VRAM: 0.5/8.0 GiB
+NET:  73.2 MB/s
 ```
 
-Each row has a thin (3 px) progress bar underneath, and every percentage-based
-value shares one colour function: normal green below the warning threshold,
-**yellow at ≥75 %** and **red at ≥90 %** (thresholds and colours configurable,
-see `[colors]` below). RAM shows `used/total` from `/proc/meminfo`; VRAM total
+Labels are aligned dynamically: every `NAME:` prefix is padded to the width of
+the widest label currently visible (monospace font ⇒ equal advance), so the
+values line up no matter which rows are enabled at the moment. Each row has a
+thin (3 px) progress bar underneath, and every percentage-based value shares
+one colour function: normal green below the warning threshold, **yellow at
+≥75 %** and **red at ≥90 %** (thresholds and colours configurable, see
+`[colors]` below). RAM shows `used/total` from `/proc/meminfo`; VRAM total
 comes from the kernel (AMD `mem_info_vram_total`, NVIDIA NVML/`nvidia-smi`,
 Intel: largest PCI memory BAR — hidden when not discoverable). The tray menu
-has checkable CPU/GPU/RAM/VRAM entries to show or hide rows at runtime.
+has checkable CPU/GPU/RAM/VRAM/NET entries to show or hide rows at runtime.
 
 <!-- Screenshot: overlay above the Plasma panel in the bottom-right corner,
      light green monospace text, one metric per line -->
@@ -32,6 +36,7 @@ has checkable CPU/GPU/RAM/VRAM entries to show or hide rows at runtime.
 | CPU utilization | `/proc/stat` delta (user, nice, system, idle, iowait, irq, softirq, steal) |
 | CPU temperature | `/sys/class/hwmon/*` — k10temp (Tctl/Tdie), zenpower, coretemp (Package id) or any CPU-ish label; discovered, never hard-coded |
 | RAM used | `/proc/meminfo`: `MemTotal − MemAvailable` (the meaningful "used" value, not `MemTotal − MemFree`) |
+| Network throughput | `/proc/net/dev` delta, all non-loopback interfaces, rx+tx combined (`lo` excluded) |
 | GPU utilization / temperature / VRAM | Vendor backend (see below), discovered via `/sys/class/drm/card*` |
 
 Missing sensors are never fatal — the HUD shows `--%` / `--°C` / `-- GiB` and keeps running.
@@ -139,7 +144,7 @@ ships with a **system tray icon** (painted, no assets). Right-click it for:
 
 - **Gizle / Göster** — hide or restore the HUD
 - **Duraklat / Devam et** — freeze/resume metric updates
-- **CPU / GPU / RAM / VRAM** checkboxes — show or hide rows at runtime
+- **CPU / GPU / RAM / VRAM / NET** checkboxes — show or hide rows at runtime
 - **Renk ▸** — change the base (normal-band) HUD colour:
   - preset palette (9 tints, applied instantly),
   - **RGB gir…** — type a colour as `#RRGGBB`, bare `rrggbb` or `R,G,B` (0-255);
@@ -214,7 +219,13 @@ show_gpu_usage=true
 show_gpu_temp=true
 show_ram=true
 show_vram=true
+show_net=true
+net_link_mbit=1000
 ```
+
+`net_link_mbit` is your nominal line speed in Mbit/s and sets the full scale
+of the NET bar: a 1000 Mbit/s line ⇒ bar spans 0–125 MB/s (1 Gbit = 125 MB).
+Set it to `0` to hide the NET bar and keep the text row.
 
 ## Autostart (opt-in)
 
@@ -293,7 +304,7 @@ cached scan. Text is rasterized once per refresh and blitted on frame updates.
 src/
   main.cpp                    CLI, wiring
   config/Config.*             INI config + defaults, CLI overrides
-  metrics/                    MetricManager (QTimer), CpuMetrics, MemoryMetrics
+  metrics/                    MetricManager (QTimer), CpuMetrics, MemoryMetrics, NetMetrics
   sensors/HwmonScanner.*      hwmon enumeration + CPU temp selection
   gpu/                        GpuDiscovery (DRM cards), GpuBackend interface,
                               AmdGpuBackend, IntelGpuBackend, NvidiaGpuBackend, GpuMetrics

@@ -8,7 +8,7 @@
 
 #include "metrics/HudRow.h"
 
-#include <QList>
+#include <vector>
 
 // The overlay surface itself: a frameless, input-transparent top-level
 // QWindow painted with QBackingStore. Deliberately not a QWidget — a raw
@@ -38,7 +38,7 @@ public:
 
     explicit OverlayWindow(const RenderConfig &config, QWindow *parent = nullptr);
 
-    void setRows(const QList<HudRow> &rows);
+    void setRows(const std::vector<HudRow> &rows);
     void setRenderConfig(const RenderConfig &config);
 
 protected:
@@ -53,7 +53,7 @@ private:
     void updateGeometry();
 
     QBackingStore *m_backingStore = nullptr;
-    QList<HudRow> m_rows;
+    std::vector<HudRow> m_rows;
     RenderConfig m_cfg;
 
     // Cached rasterization of the current rows: text rendering with an

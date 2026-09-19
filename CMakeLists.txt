@@ -38,6 +38,7 @@ add_executable(system-overlay
     src/metrics/MetricManager.cpp
     src/metrics/CpuMetrics.cpp
     src/metrics/MemoryMetrics.cpp
+    src/metrics/NetMetrics.cpp
     src/sensors/HwmonScanner.cpp
     src/gpu/GpuDiscovery.cpp
     src/gpu/AmdGpuBackend.cpp

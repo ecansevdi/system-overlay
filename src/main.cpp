@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
 
     QCommandLineParser parser;
     parser.setApplicationDescription(
-        QStringLiteral("Lightweight performance overlay (CPU/GPU/RAM/VRAM) for KDE Plasma.\n"
+        QStringLiteral("Lightweight performance overlay (CPU/GPU/RAM/VRAM/NET) for KDE Plasma.\n"
                        "Uses KWin layer-shell on Wayland so it stays visible above normal,\n"
                        "maximized and fullscreen windows, is click-through and never takes focus."));
     parser.addHelpOption();

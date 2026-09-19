@@ -102,7 +102,7 @@ TrayIcon::TrayIcon(QObject *parent)
     : QObject(parent)
 {
     m_tray = new QSystemTrayIcon(QIcon(makeIcon()), this);
-    m_tray->setToolTip(QStringLiteral("System Overlay (CPU/GPU/RAM/VRAM)"));
+    m_tray->setToolTip(QStringLiteral("System Overlay (CPU/GPU/RAM/VRAM/NET)"));
 
     auto *menu = new QMenu;
     m_tray->setContextMenu(menu);
@@ -111,9 +111,10 @@ TrayIcon::TrayIcon(QObject *parent)
     m_pauseAction = menu->addAction(QStringLiteral("Duraklat"));
     menu->addSeparator();
 
-    // Per-metric toggles: rows can be shown/hidden at runtime.
-    static const char *kRowNames[4] = {"CPU", "GPU", "RAM", "VRAM"};
-    for (int row = 0; row < 4; ++row) {
+    // Per-metric toggles: rows can be shown/hidden at runtime. Keep in sync
+    // with the HudRows enum in metrics/HudRow.h.
+    static const char *kRowNames[5] = {"CPU", "GPU", "RAM", "VRAM", "NET"};
+    for (int row = 0; row < 5; ++row) {
         QAction *action = menu->addAction(QLatin1String(kRowNames[row]));
         action->setCheckable(true);
         action->setChecked(true);
