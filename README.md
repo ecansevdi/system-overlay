@@ -1,9 +1,9 @@
 # system-overlay
 
-Lightweight, game-style performance overlay (HUD) for **CachyOS / Arch Linux + KDE Plasma 6**.
-It shows live system statistics in the **bottom-right corner of the screen** as a vertical
-stack, rendered as a real Wayland **layer-shell overlay** so it stays visible above normal
-windows, maximized windows, browser fullscreen (F11) and KWin fullscreen applications —
+Lightweight, game-style performance overlay (HUD) for **CachyOS / Arch Linux + KDE Plasma 6**
+(v1.4.1). It shows live system statistics in the **bottom-right corner of the screen** as a
+vertical stack, rendered as a real Wayland **layer-shell overlay** so it stays visible above
+normal windows, maximized windows, browser fullscreen (F11) and KWin fullscreen applications —
 while remaining completely transparent to input (click-through, no focus, no keyboard,
 no taskbar entry). Bottom-anchored positions automatically stay clear of panels.
 
@@ -111,39 +111,40 @@ connectors and `boot_vga`; `card0` is *not* assumed to be the gaming GPU).
   `perf_event_paranoid ≤ 1`; the fdinfo method needs no privileges.
 - Unknown GPUs simply show `--` values; the application never crashes on them.
 
-## Build dependencies (CachyOS / Arch)
+## Run (AppImage, preferred)
 
-```
-sudo pacman -S --needed base-devel cmake qt6-base layer-shell-qt
-```
-
-(`qt6-wayland` is already present on any KDE Plasma system. X11 fallback needs no extra
-packages — it uses Qt's xcb platform, which is part of `qt6-base`.)
-
-## Run (AppImage)
-
-Self-contained binary with Qt6, Wayland plugins and LayerShellQt inside.
-No system packages are needed to *run* it:
+Self-contained binary (~69 MB) with Qt6, Wayland plugins and LayerShellQt inside.
+No system Qt packages are needed to *run* it:
 
 ```bash
-chmod +x pack-appimage.sh
-./pack-appimage.sh
-./dist/system-overlay-*-x86_64.AppImage
+chmod +x dist/system-overlay-1.4.1-x86_64.AppImage
+./dist/system-overlay-1.4.1-x86_64.AppImage
 ```
 
-NVIDIA metrics still use the system's `libnvidia-ml.so.1` (must match the
+Rebuild from source:
+
+```bash
+./pack-appimage.sh          # writes dist/system-overlay-<version>-x86_64.AppImage
+```
+
+NVIDIA metrics still `dlopen` the system's `libnvidia-ml.so.1` (must match the
 installed driver). Everything else is bundled.
 
 ## Alternative: install from source
 
+Needs `qt6-base`, `qt6-wayland`, `layer-shell-qt`, `cmake`, `gcc` on the machine:
+
 ```bash
-chmod +x setup.sh
 ./setup.sh
 ```
 
 Dependencies already installed → fully offline. Missing Arch packages are
 installed with `sudo pacman -S` (needs network). Then
 `~/.local/bin/system-overlay` or **System Overlay** in the app menu / Desktop.
+
+```
+sudo pacman -S --needed base-devel cmake qt6-base qt6-wayland layer-shell-qt
+```
 
 Manual build:
 
@@ -183,10 +184,12 @@ ships with a **system tray icon** (painted, no assets). Right-click it for:
 - **Credit: ecansevdi** — grey information line, not clickable
 - **Çıkış** — quit the application
 
-The context menu opens on the **opposite edge** of the HUD's screen half (12 px inset)
-rather than under the cursor, and the HUD is **hidden while the menu is open** so the
-layer-shell overlay does not paint over the colour swatches. A second launch warns and
-exits (single instance).
+The tray menu is Plasma's StatusNotifierItem **DBus menu** (a Wayland `QMenu::popup`
+cannot grab without a parent that received input). While the menu, the **Renk**
+submenu or a colour dialog is open, the HUD is **parked off-screen** so it does not
+paint over the swatches; when the menu closes (or the pointer leaves that half of
+the screen) the overlay is **recreated** in its corner. A second launch warns and
+exits (single instance). Left-clicking the tray icon also brings the HUD back.
 
 The tray can be disabled with `[display] show_tray=false` (then the only way to stop the
 app is `killall system-overlay`).
@@ -198,7 +201,7 @@ system-overlay --help
 system-overlay --version
 system-overlay --interval 500        # refresh interval ms (100–60000, default 1000)
 system-overlay --screen primary      # primary | all | output name (DP-1, HDMI-A-1, ...)
-system-overlay --debug               # dump hwmon + GPU source discovery to stderr
+system-overlay --debug               # dump hwmon + GPU + FPS source + HUD rows to stderr
 ```
 
 `--debug` example output:
@@ -209,11 +212,16 @@ hwmon scan:
     Tctl = 44.8 C  [/sys/class/hwmon/hwmon3/temp1_input]
   selected CPU temp: k10temp / Tctl -> /sys/class/hwmon/hwmon3/temp1_input
 metric sources:
+Detected CPU temperature source:
+  k10temp / Tctl -> /sys/class/hwmon/hwmon3/temp1_input
 Detected GPU:
   GPU Intel (card1): Intel (fdinfo + hwmon)
-  utilization source: /proc/*/fdinfo drm-engine-{render,compute,copy} (sum of client deltas)
-  VRAM source: /proc/*/fdinfo drm-total-local0 (sum over clients, approximate)
-  temperature source: /sys/class/drm/card1/device/hwmon/hwmon2/temp1_input
+  FPS: KWin Window.damaged (fastest client)
+Row visibility: CPU=on GPU=on RAM=on VRAM=on up=on down=on FPS=on
+HUD rows:
+  CPU:  7% 43°C
+  ...
+  FPS:  --
 ```
 
 ## Configuration
@@ -350,8 +358,9 @@ src/
                               AmdGpuBackend, IntelGpuBackend, NvidiaGpuBackend, GpuMetrics
   overlay/                    OverlayWindow (QWindow+QBackingStore renderer),
                               WaylandOverlay (LayerShellQt), X11Overlay, OverlayController,
-                              TrayIcon (system tray: hide/pause/quit)
+                              TrayIcon (Plasma SNI DBus menu)
 resources/system-overlay.desktop.in
+resources/appimage/           desktop file used inside the AppImage
 pack-appimage.sh              primary distro: self-contained AppImage in dist/
 setup.sh                     secondary: install from source to ~/.local
 linux-inst.md                 Linux (CachyOS) project spec
