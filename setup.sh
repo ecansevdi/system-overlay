@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Install system-overlay for the current user.
+# Secondary install path: build from source into ~/.local.
+# Preferred distribution is the AppImage from ./pack-appimage.sh
+# (no system Qt/LayerShellQt install required to *run*).
+#
 # Dependencies: if already present, this is fully offline. Otherwise pacman
 # fetches the missing packages (needs sudo + network).
 set -euo pipefail

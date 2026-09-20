@@ -120,9 +120,21 @@ sudo pacman -S --needed base-devel cmake qt6-base layer-shell-qt
 (`qt6-wayland` is already present on any KDE Plasma system. X11 fallback needs no extra
 packages — it uses Qt's xcb platform, which is part of `qt6-base`.)
 
-## Build & install
+## Run (AppImage)
 
-**One-shot user install** (app menu + `~/.local/bin` + Desktop shortcut):
+Self-contained binary with Qt6, Wayland plugins and LayerShellQt inside.
+No system packages are needed to *run* it:
+
+```bash
+chmod +x pack-appimage.sh
+./pack-appimage.sh
+./dist/system-overlay-*-x86_64.AppImage
+```
+
+NVIDIA metrics still use the system's `libnvidia-ml.so.1` (must match the
+installed driver). Everything else is bundled.
+
+## Alternative: install from source
 
 ```bash
 chmod +x setup.sh
@@ -130,13 +142,8 @@ chmod +x setup.sh
 ```
 
 Dependencies already installed → fully offline. Missing Arch packages are
-installed with `sudo pacman -S` (needs network). Then:
-
-```bash
-~/.local/bin/system-overlay
-```
-
-or click **System Overlay** in the application menu / on the Desktop.
+installed with `sudo pacman -S` (needs network). Then
+`~/.local/bin/system-overlay` or **System Overlay** in the app menu / Desktop.
 
 Manual build:
 
@@ -345,7 +352,8 @@ src/
                               WaylandOverlay (LayerShellQt), X11Overlay, OverlayController,
                               TrayIcon (system tray: hide/pause/quit)
 resources/system-overlay.desktop.in
-setup.sh                     user install (~/.local/bin + app menu + Desktop shortcut)
+pack-appimage.sh              primary distro: self-contained AppImage in dist/
+setup.sh                     secondary: install from source to ~/.local
 linux-inst.md                 Linux (CachyOS) project spec
 win-inst.md                   Windows (stat-win) project spec
 contrib/system-overlay.service

@@ -2,3 +2,5 @@ build/
 *.user
 compile_commands.json
 install_manifest.txt
+.tools/
+dist/

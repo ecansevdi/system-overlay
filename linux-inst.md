@@ -198,15 +198,32 @@ net_link_mbit=1000
 
 CLI: `--interval <ms>`, `--screen primary|all|<ad>`, `--debug`, `--version`, `--help`.
 
-## 11. Derleme, kurulum, çalıştırma
+## 11. Dağıtım ve çalıştırma
+
+### 11.1 AppImage (birincil)
+
+Qt6, Wayland eklentileri ve LayerShellQt paketin içindedir. Çalıştırmak için
+sisteme Qt kurulması gerekmez:
 
 ```bash
-# Bağımlılıklar zaten varsa setup.sh tamamen offline derler.
+chmod +x pack-appimage.sh
+./pack-appimage.sh
+chmod +x dist/system-overlay-*-x86_64.AppImage
+./dist/system-overlay-1.4.1-x86_64.AppImage
+```
+
+`pack-appimage.sh` derleme makinesinde `qt6-base`, `qt6-wayland`,
+`layer-shell-qt`, `cmake`, `imagemagick` ister; üretilen AppImage başka
+CachyOS/Arch/KDE kutularında bağımsız çalışır. NVIDIA ölçümü hâlâ sistemdeki
+`libnvidia-ml.so.1` dosyasını `dlopen` eder (sürücüyle eşleşmeli).
+
+### 11.2 Kaynaktan kurulum (ikinci seçenek)
+
+```bash
 chmod +x setup.sh
 ./setup.sh
 # → ~/.local/bin/system-overlay
-# → uygulama menüsü "System Overlay"
-# → masaüstü kısayolu
+# → uygulama menüsü + masaüstü kısayolu
 ```
 
 Elle:
@@ -217,8 +234,6 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ./build/system-overlay --debug
 ```
-
-`setup.sh` eksik paketleri `sudo pacman -S --needed` ile online kurar.
 
 ## 12. Kabul kriterleri
 
