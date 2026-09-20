@@ -57,9 +57,10 @@ public:
     bool showRam() const { return m_showRam; }
     bool showVram() const { return m_showVram; }
     bool showNet() const { return m_showNet; }
+    bool showFps() const { return m_showFps; }
 
-    // Nominal line speed in Mbit/s, used as the NET bar's full scale.
-    // 1000 Mbit/s -> 125 MB/s. 0 disables the bar (text-only row).
+    // Nominal line speed in Mbit/s, used as the up/down bars' full scale.
+    // 1000 Mbit/s -> 125 MB/s. 0 disables the bars (text-only rows).
     double netLinkMbit() const { return m_netLinkMbit; }
 
     static QString configFilePath();
@@ -99,5 +100,6 @@ private:
     bool m_showRam = true;
     bool m_showVram = true;
     bool m_showNet = true;
+    bool m_showFps = true;
     double m_netLinkMbit = 1000.0;
 };

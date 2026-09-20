@@ -2,9 +2,10 @@
 Type=Application
 Name=System Overlay
 GenericName=Performance Overlay
-Comment=Lightweight HUD showing CPU, GPU, RAM and VRAM usage in the top-left corner
-Exec=system-overlay
-TryExec=system-overlay
+Comment=Lightweight HUD showing CPU, GPU, RAM, VRAM, network and FPS
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/system-overlay
+TryExec=@CMAKE_INSTALL_FULL_BINDIR@/system-overlay
+Icon=utilities-system-monitor
 Terminal=false
 Categories=System;Monitor;Utility;
 StartupNotify=false

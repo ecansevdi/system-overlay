@@ -12,6 +12,7 @@ MetricManager::MetricManager(const Config &config, QObject *parent)
     : QObject(parent)
     , m_config(config)
     , m_gpu(config.refreshInterval())
+    , m_fps(this)
 {
     m_timer = new QTimer(this);
     m_timer->setTimerType(Qt::CoarseTimer);
@@ -23,7 +24,9 @@ MetricManager::MetricManager(const Config &config, QObject *parent)
     m_rowVisible[RowGpu] = config.showGpuUsage() || config.showGpuTemp();
     m_rowVisible[RowRam] = config.showRam();
     m_rowVisible[RowVram] = config.showVram();
-    m_rowVisible[RowNet] = config.showNet();
+    m_rowVisible[RowNetUp] = config.showNet();
+    m_rowVisible[RowNetDown] = config.showNet();
+    m_rowVisible[RowFps] = config.showFps();
     m_baseColor = QColor(config.textColor());
 
     if (const auto src = HwmonScanner::findCpuTemp())
@@ -34,8 +37,10 @@ MetricManager::MetricManager(const Config &config, QObject *parent)
     if (!m_gpu.discover())
         qWarning("MetricManager: no supported GPU backend (will show \"--\" for GPU metrics)");
 
-    if (m_rowVisible[RowNet])
+    if (m_rowVisible[RowNetUp] || m_rowVisible[RowNetDown])
         m_net.prime();
+    if (m_rowVisible[RowFps])
+        m_fps.start();
 }
 
 void MetricManager::prime()
@@ -49,6 +54,17 @@ void MetricManager::start()
 {
     m_timer->start(m_config.refreshInterval());
     Q_EMIT rowsChanged(sampleAndFormat());
+
+    if (m_config.debug()) {
+        fprintf(stderr, "HUD rows:\n");
+        if (m_currentRows.empty()) {
+            fprintf(stderr, "  (none)\n");
+        } else {
+            for (const HudRow &row : m_currentRows)
+                fprintf(stderr, "  %s\n", qUtf8Printable(row.text));
+        }
+        fflush(stderr);
+    }
 }
 
 void MetricManager::setInterval(int ms)
@@ -60,9 +76,16 @@ void MetricManager::setRowVisible(int row, bool visible)
 {
     if (row < 0 || row >= RowCount || m_rowVisible[row] == visible)
         return;
+    const bool netWasLive = m_rowVisible[RowNetUp] || m_rowVisible[RowNetDown];
     m_rowVisible[row] = visible;
-    if (row == RowNet && visible)
+    if ((row == RowNetUp || row == RowNetDown) && visible && !netWasLive)
         m_net.prime(); // fresh delta base so the row does not show a stale spike
+    if (row == RowFps) {
+        if (visible)
+            m_fps.start();
+        else
+            m_fps.stop();
+    }
     // Refresh immediately so the HUD reacts without waiting for the next tick.
     Q_EMIT rowsChanged(sampleAndFormat());
 }
@@ -87,6 +110,28 @@ QColor MetricManager::colorForPercent(double pct) const
     return m_baseColor;
 }
 
+HudRow MetricManager::formatNetRow(const QString &label, double mBps,
+                                   const std::optional<NetMetrics::NetSample> &net) const
+{
+    HudRow row;
+    row.text = label;
+    if (net) {
+        const double maxMbps = NetMetrics::maxMBpsFromMbit(m_config.netLinkMbit());
+        row.text += QStringLiteral(" %1 MB/s").arg(mBps, 0, 'f', 1);
+        if (maxMbps > 0.0) {
+            row.fraction = std::clamp(mBps / maxMbps, 0.0, 1.0);
+            row.color = colorForPercent(100.0 * mBps / maxMbps);
+        } else {
+            row.fraction = -1.0; // 0 Mbit config: text only, no bar
+        }
+    } else {
+        row.text += QStringLiteral(" -- MB/s");
+    }
+    if (!row.color.isValid())
+        row.color = colorForPercent(0);
+    return row;
+}
+
 std::vector<HudRow> MetricManager::sampleAndFormat()
 {
     static const bool perfTrace = qEnvironmentVariableIsSet("SYSTEM_OVERLAY_PERF");
@@ -96,11 +141,16 @@ std::vector<HudRow> MetricManager::sampleAndFormat()
 
     std::vector<HudRow> rows;
 
-    const bool needGpuSample = m_config.showGpuUsage() || m_config.showGpuTemp() || m_config.showVram()
-        || m_rowVisible[RowGpu] || m_rowVisible[RowVram];
+    const bool needGpuSample = m_rowVisible[RowGpu] || m_rowVisible[RowVram];
     GpuSample gpu;
     if (needGpuSample)
         gpu = m_gpu.sample(); // exactly one backend sample per refresh
+
+    // One /proc/net/dev snapshot feeds both up and down. Sampling twice
+    // would split the delta window and report half the real rate.
+    std::optional<NetMetrics::NetSample> net;
+    if (m_rowVisible[RowNetUp] || m_rowVisible[RowNetDown])
+        net = m_net.sample();
 
     if (m_rowVisible[RowCpu] && (m_config.showCpuUsage() || m_config.showCpuTemp())) {
         HudRow row;
@@ -121,7 +171,7 @@ std::vector<HudRow> MetricManager::sampleAndFormat()
                 haveTemp = true;
             }
         }
-        if (!haveTemp)
+        if (m_config.showCpuTemp() && !haveTemp)
             row.text += QStringLiteral(" --°C");
         if (!row.color.isValid())
             row.color = colorForPercent(0);
@@ -191,21 +241,21 @@ std::vector<HudRow> MetricManager::sampleAndFormat()
         rows.push_back(std::move(row));
     }
 
-    if (m_rowVisible[RowNet]) {
+    if (m_rowVisible[RowNetUp])
+        rows.push_back(formatNetRow(QStringLiteral("up:"), net ? net->upMBps : 0.0, net));
+    if (m_rowVisible[RowNetDown])
+        rows.push_back(formatNetRow(QStringLiteral("down:"), net ? net->downMBps : 0.0, net));
+
+    if (m_rowVisible[RowFps]) {
         HudRow row;
-        row.text = QStringLiteral("NET:");
-        if (const auto net = m_net.sample()) {
-            // User-facing line speed from [metrics] net_link_mbit (e.g. a
-            // 1000 Mbit/s line -> 125 MB/s). Bars scale 0..that value.
-            const double maxMbps = NetMetrics::maxMBpsFromMbit(m_config.netLinkMbit());
-            row.text += QStringLiteral(" %1 MB/s").arg(net->megaBytesPerSecond, 0, 'f', 1);
-            row.fraction = std::clamp(net->megaBytesPerSecond / maxMbps, 0.0, 1.0);
-            row.color = colorForPercent(100.0 * net->megaBytesPerSecond / maxMbps);
+        row.fraction = -1.0; // frame cap is variable; a full-scale bar is meaningless
+        if (const auto fps = m_fps.sample(); fps && *fps > 0) {
+            row.text = QStringLiteral("FPS: %1").arg(*fps);
+            row.color = (*fps < 55) ? QColor(m_config.warningColor()) : m_baseColor;
         } else {
-            row.text += QStringLiteral(" -- MB/s");
+            row.text = QStringLiteral("FPS: --");
+            row.color = m_baseColor;
         }
-        if (!row.color.isValid())
-            row.color = colorForPercent(0);
         rows.push_back(std::move(row));
     }
 
@@ -237,9 +287,16 @@ QString MetricManager::debugInfo() const
     ts << "Detected GPU:\n";
     ts << "  " << m_gpu.summary() << "\n";
     ts << m_gpu.debugInfo();
+    ts << m_fps.debugInfo();
     ts << "Colour thresholds: warning >= " << m_config.warningPct() << "% ("
        << m_config.warningColor() << "), critical >= " << m_config.criticalPct() << "% ("
        << m_config.criticalColor() << ")\n";
+
+    static const char *kNames[RowCount] = {"CPU", "GPU", "RAM", "VRAM", "up", "down", "FPS"};
+    ts << "Row visibility:";
+    for (int i = 0; i < RowCount; ++i)
+        ts << ' ' << kNames[i] << '=' << (m_rowVisible[i] ? "on" : "off");
+    ts << '\n';
 
     return out;
 }

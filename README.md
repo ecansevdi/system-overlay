@@ -12,7 +12,9 @@ CPU:  10% 49°C
 GPU:  14% 47°C
 RAM:  5.4/31.3 GiB
 VRAM: 0.5/8.0 GiB
-NET:  73.2 MB/s
+up:   12.3 MB/s
+down: 73.2 MB/s
+FPS:  --
 ```
 
 Labels are aligned dynamically: every `NAME:` prefix is padded to the width of
@@ -24,7 +26,7 @@ one colour function: normal green below the warning threshold, **yellow at
 `[colors]` below). RAM shows `used/total` from `/proc/meminfo`; VRAM total
 comes from the kernel (AMD `mem_info_vram_total`, NVIDIA NVML/`nvidia-smi`,
 Intel: largest PCI memory BAR — hidden when not discoverable). The tray menu
-has checkable CPU/GPU/RAM/VRAM/NET entries to show or hide rows at runtime.
+has checkable CPU/GPU/RAM/VRAM/up/down/FPS entries to show or hide rows at runtime.
 
 <!-- Screenshot: overlay above the Plasma panel in the bottom-right corner,
      light green monospace text, one metric per line -->
@@ -36,7 +38,8 @@ has checkable CPU/GPU/RAM/VRAM/NET entries to show or hide rows at runtime.
 | CPU utilization | `/proc/stat` delta (user, nice, system, idle, iowait, irq, softirq, steal) |
 | CPU temperature | `/sys/class/hwmon/*` — k10temp (Tctl/Tdie), zenpower, coretemp (Package id) or any CPU-ish label; discovered, never hard-coded |
 | RAM used | `/proc/meminfo`: `MemTotal − MemAvailable` (the meaningful "used" value, not `MemTotal − MemFree`) |
-| Network throughput | `/proc/net/dev` delta, all non-loopback interfaces, rx+tx combined (`lo` excluded) |
+| Upload / download | `/proc/net/dev` delta, all non-loopback interfaces (`lo` excluded; VPN/tun included). One snapshot feeds both `up` and `down` rows. |
+| FPS | KWin `Window.damaged` (fastest presenting client — same idea as Windows ETW). No KWin → `--`. |
 | GPU utilization / temperature / VRAM | Vendor backend (see below), discovered via `/sys/class/drm/card*` |
 
 Missing sensors are never fatal — the HUD shows `--%` / `--°C` / `-- GiB` and keeps running.
@@ -119,6 +122,24 @@ packages — it uses Qt's xcb platform, which is part of `qt6-base`.)
 
 ## Build & install
 
+**One-shot user install** (app menu + `~/.local/bin` + Desktop shortcut):
+
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+Dependencies already installed → fully offline. Missing Arch packages are
+installed with `sudo pacman -S` (needs network). Then:
+
+```bash
+~/.local/bin/system-overlay
+```
+
+or click **System Overlay** in the application menu / on the Desktop.
+
+Manual build:
+
 ```bash
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build build
@@ -144,7 +165,7 @@ ships with a **system tray icon** (painted, no assets). Right-click it for:
 
 - **Gizle / Göster** — hide or restore the HUD
 - **Duraklat / Devam et** — freeze/resume metric updates
-- **CPU / GPU / RAM / VRAM / NET** checkboxes — show or hide rows at runtime
+- **CPU / GPU / RAM / VRAM / up / down / FPS** checkboxes — show or hide rows at runtime
 - **Renk ▸** — change the base (normal-band) HUD colour:
   - preset palette (9 tints, applied instantly),
   - **RGB gir…** — type a colour as `#RRGGBB`, bare `rrggbb` or `R,G,B` (0-255);
@@ -152,7 +173,13 @@ ships with a **system tray icon** (painted, no assets). Right-click it for:
   - **Renk penceresi…** — the full Qt colour dialog.
   The choice is saved to `[display] text_color` and survives restarts. Warning/critical
   alert colours keep coming from `[colors]`.
+- **Credit: ecansevdi** — grey information line, not clickable
 - **Çıkış** — quit the application
+
+The context menu opens on the **opposite edge** of the HUD's screen half (12 px inset)
+rather than under the cursor, and the HUD is **hidden while the menu is open** so the
+layer-shell overlay does not paint over the colour swatches. A second launch warns and
+exits (single instance).
 
 The tray can be disabled with `[display] show_tray=false` (then the only way to stop the
 app is `killall system-overlay`).
@@ -220,12 +247,15 @@ show_gpu_temp=true
 show_ram=true
 show_vram=true
 show_net=true
+show_fps=true
 net_link_mbit=1000
 ```
 
-`net_link_mbit` is your nominal line speed in Mbit/s and sets the full scale
-of the NET bar: a 1000 Mbit/s line ⇒ bar spans 0–125 MB/s (1 Gbit = 125 MB).
-Set it to `0` to hide the NET bar and keep the text row.
+`show_net` is the initial state of **both** the `up` and `down` rows; they can
+still be toggled independently from the tray. `net_link_mbit` is your nominal
+line speed in Mbit/s and sets the full scale of both bars: a 1000 Mbit/s line
+⇒ bars span 0–125 MB/s (1 Gbit = 125 MB). Set it to `0` to hide the bars and
+keep the text rows.
 
 ## Autostart (opt-in)
 
@@ -280,6 +310,9 @@ cached scan. Text is rasterized once per refresh and blitted on frame updates.
   (VR compositors) that take over the display, and scenarios where the display is driven
   outside the compositor. The overlay is composited by KWin and cannot appear over those.
 - **Intel VRAM** is an approximation (see Intel backend section). AMD VRAM is exact.
+- **FPS** counts client presents via a short-lived KWin script (`Window.damaged`),
+  analogous to Windows ETW. Idle desktop often shows `--`; a video or game should
+  show that client's frame rate. Requires KWin (Plasma).
 - **Intel/NVIDIA GPU utilization** does not include video-engine load (decode/encode);
   it reflects render+compute+copy engines.
 - The HUD only reads what an unprivileged user can read; it never needs root, never
@@ -304,7 +337,7 @@ cached scan. Text is rasterized once per refresh and blitted on frame updates.
 src/
   main.cpp                    CLI, wiring
   config/Config.*             INI config + defaults, CLI overrides
-  metrics/                    MetricManager (QTimer), CpuMetrics, MemoryMetrics, NetMetrics
+  metrics/                    MetricManager (QTimer), CpuMetrics, MemoryMetrics, NetMetrics, FpsTracker
   sensors/HwmonScanner.*      hwmon enumeration + CPU temp selection
   gpu/                        GpuDiscovery (DRM cards), GpuBackend interface,
                               AmdGpuBackend, IntelGpuBackend, NvidiaGpuBackend, GpuMetrics
@@ -312,6 +345,9 @@ src/
                               WaylandOverlay (LayerShellQt), X11Overlay, OverlayController,
                               TrayIcon (system tray: hide/pause/quit)
 resources/system-overlay.desktop.in
+setup.sh                     user install (~/.local/bin + app menu + Desktop shortcut)
+linux-inst.md                 Linux (CachyOS) project spec
+win-inst.md                   Windows (stat-win) project spec
 contrib/system-overlay.service
 ```
 

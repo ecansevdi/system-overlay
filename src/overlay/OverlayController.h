@@ -11,6 +11,7 @@
 
 class MetricManager;
 class QScreen;
+class QTimer;
 class TrayIcon;
 
 // Owns the overlay window(s), the screen-following logic and the tray icon.
@@ -21,8 +22,14 @@ class OverlayController : public QObject
     Q_OBJECT
 public:
     OverlayController(const Config &config, MetricManager *metrics, QObject *parent = nullptr);
+    ~OverlayController() override;
 
     void start();
+
+public Q_SLOTS:
+    void holdHud();
+    void releaseHud();
+    void releaseHudSoon();
 
 private:
     OverlayWindow::RenderConfig renderConfigFor(QScreen *screen) const;
@@ -31,10 +38,26 @@ private:
     void showWindow(OverlayWindow *win, QScreen *screen);
     bool applyLayerShell(OverlayWindow *win, QScreen *screen);
     void createTrayIcon();
+    void hideAllWindows();
+    void showAllWindows();
+    void setHudSuppressed(bool suppressed);
+    void armHudRestore();
+    void holdHudForMenu();
+    void rebuildWindows();
+    void registerHudDbus();
+    void loadMenuScript();
+    void unloadMenuScript();
+    void pollMenuCursor();
 
     const Config &m_config;
     MetricManager *m_metrics = nullptr;
     TrayIcon *m_tray = nullptr;
+    QTimer *m_hudRestoreTimer = nullptr;
+    QTimer *m_menuPollTimer = nullptr;
+    bool m_userWantsVisible = true;
+    bool m_hudParked = false;
+    bool m_sawShellPopup = false;
+    int m_cursorAwayTicks = 0;
 
     struct Entry
     {

@@ -8,6 +8,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QRegularExpression>
+#include <QSignalBlocker>
 #include <QSystemTrayIcon>
 
 namespace {
@@ -47,7 +48,7 @@ QPixmap swatchPixmap(const QColor &color)
 }
 
 // Tray icon painted at 48px so it stays crisp on HiDPI panels; no external
-// asset needed.
+// asset needed. Dark rounded square with three green bars matching the HUD.
 QPixmap makeIcon()
 {
     QPixmap pm(48, 48);
@@ -102,20 +103,48 @@ TrayIcon::TrayIcon(QObject *parent)
     : QObject(parent)
 {
     m_tray = new QSystemTrayIcon(QIcon(makeIcon()), this);
-    m_tray->setToolTip(QStringLiteral("System Overlay (CPU/GPU/RAM/VRAM/NET)"));
+    m_tray->setToolTip(QStringLiteral("System Overlay (CPU/GPU/RAM/VRAM/NET/FPS)"));
 
-    auto *menu = new QMenu;
-    m_tray->setContextMenu(menu);
+    m_menu = new QMenu;
+    m_tray->setContextMenu(m_menu);
 
-    m_visibilityAction = menu->addAction(QStringLiteral("Gizle"));
-    m_pauseAction = menu->addAction(QStringLiteral("Duraklat"));
-    menu->addSeparator();
+    connect(m_tray, &QSystemTrayIcon::activated, this,
+        [this](QSystemTrayIcon::ActivationReason reason) {
+            if (reason == QSystemTrayIcon::Trigger)
+                Q_EMIT menuActionTriggered();
+        });
+
+    connect(m_menu, &QMenu::aboutToShow, this, &TrayIcon::menuAboutToShow);
+    connect(m_menu, &QMenu::aboutToHide, this, &TrayIcon::menuAboutToHide);
+    connect(m_menu, &QMenu::triggered, this, [this](QAction *action) {
+        if (action && action->menu())
+            return;
+        Q_EMIT menuAboutToHide();
+    });
+
+    m_visibilityAction = m_menu->addAction(QStringLiteral("Gizle"));
+    connect(m_visibilityAction, &QAction::triggered, this, [this]() {
+        m_visible = !m_visible;
+        updateActions();
+        if (m_visible)
+            Q_EMIT showRequested();
+        else
+            Q_EMIT hideRequested();
+    });
+
+    m_pauseAction = m_menu->addAction(QStringLiteral("Duraklat"));
+    connect(m_pauseAction, &QAction::triggered, this, [this]() {
+        m_paused = !m_paused;
+        updateActions();
+        Q_EMIT pauseRequested(m_paused);
+    });
+    m_menu->addSeparator();
 
     // Per-metric toggles: rows can be shown/hidden at runtime. Keep in sync
     // with the HudRows enum in metrics/HudRow.h.
-    static const char *kRowNames[5] = {"CPU", "GPU", "RAM", "VRAM", "NET"};
-    for (int row = 0; row < 5; ++row) {
-        QAction *action = menu->addAction(QLatin1String(kRowNames[row]));
+    static const char *kRowNames[RowCount] = {"CPU", "GPU", "RAM", "VRAM", "up", "down", "FPS"};
+    for (int row = 0; row < RowCount; ++row) {
+        QAction *action = m_menu->addAction(QLatin1String(kRowNames[row]));
         action->setCheckable(true);
         action->setChecked(true);
         connect(action, &QAction::toggled, this, [this, row](bool visible) {
@@ -123,10 +152,13 @@ TrayIcon::TrayIcon(QObject *parent)
         });
         m_metricActions[row] = action;
     }
-    menu->addSeparator();
+    m_menu->addSeparator();
 
     // Colour picker: preset palette, manual RGB entry and a full dialog.
-    QMenu *colorMenu = menu->addMenu(QStringLiteral("Renk"));
+    QMenu *colorMenu = m_menu->addMenu(QStringLiteral("Renk"));
+    connect(colorMenu, &QMenu::aboutToShow, this, &TrayIcon::menuAboutToShow);
+    connect(colorMenu, &QMenu::aboutToHide, this, &TrayIcon::menuAboutToHide);
+    connect(colorMenu->menuAction(), &QAction::hovered, this, &TrayIcon::menuAboutToShow);
     for (const PaletteEntry &entry : kPalette) {
         // fromUtf8, NOT QLatin1String: Latin-1 would mojibake any non-ASCII
         // name (the "YeÅŸil" bug).
@@ -139,9 +171,11 @@ TrayIcon::TrayIcon(QObject *parent)
     colorMenu->addSeparator();
     QAction *rgbAction = colorMenu->addAction(QStringLiteral("RGB gir…"));
     connect(rgbAction, &QAction::triggered, this, [this]() {
+        Q_EMIT menuAboutToShow();
         const QString input = QInputDialog::getText(nullptr,
             QStringLiteral("RGB gir"),
             QStringLiteral("Renk kodu:  #RRGGBB  veya  R,G,B  (0-255)"));
+        Q_EMIT menuAboutToHide();
         if (input.isEmpty())
             return;
         const QColor color = parseColorInput(input);
@@ -154,17 +188,35 @@ TrayIcon::TrayIcon(QObject *parent)
     });
     QAction *dialogAction = colorMenu->addAction(QStringLiteral("Renk penceresi…"));
     connect(dialogAction, &QAction::triggered, this, [this]() {
+        Q_EMIT menuAboutToShow();
         const QColor color = QColorDialog::getColor(QColor(kPalette[0].hex), nullptr,
             QStringLiteral("HUD rengi seç"));
+        Q_EMIT menuAboutToHide();
         if (color.isValid())
             Q_EMIT baseColorRequested(color);
     });
 
-    menu->addSeparator();
-    QAction *quitAction = menu->addAction(QStringLiteral("Çıkış"));
+    m_menu->addSeparator();
+    QAction *credit = m_menu->addAction(QStringLiteral("Credit: ecansevdi"));
+    credit->setEnabled(false);
+    QAction *quitAction = m_menu->addAction(QStringLiteral("Çıkış"));
     connect(quitAction, &QAction::triggered, this, &TrayIcon::quitRequested);
 
+    updateActions();
     m_tray->show();
+}
+
+QMenu *TrayIcon::menu() const
+{
+    return m_menu;
+}
+
+void TrayIcon::setRowChecked(int row, bool checked)
+{
+    if (row < 0 || row >= RowCount || !m_metricActions[row])
+        return;
+    const QSignalBlocker blocker(m_metricActions[row]);
+    m_metricActions[row]->setChecked(checked);
 }
 
 void TrayIcon::updateActions()

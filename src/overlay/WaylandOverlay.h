@@ -26,4 +26,10 @@ public:
     // Re-target an already created layer surface to another output (requires
     // a hide/show remap by the caller afterwards).
     static void applyScreen(OverlayWindow *win, QScreen *screen);
+
+    // Keep the surface mapped but fully off the output so Plasma menus can
+    // paint without the overlay sitting on top of them. Opacity is ignored
+    // on KWin layer-shell surfaces; hide()/show() often fails to remap.
+    static void park(OverlayWindow *win, QScreen *screen);
+    static void unpark(OverlayWindow *win, const Config &cfg, QScreen *screen);
 };

@@ -3,17 +3,15 @@
 #include <QDateTime>
 #include <QFile>
 
-#include <cmath>
-
 // Snapshot semantics: /proc/net/dev gives cumulative byte counters per
 // interface, so a single snapshot means nothing by itself. prime() stores the
 // first snapshot; sample() computes bytes/sec against it and stores the new
 // snapshot for the next round — exactly like CpuMetrics handles /proc/stat.
 //
-// Loopback is excluded (local IPC is not internet traffic), and interfaces
-// that were down since boot report all-zero counters, which would otherwise
-// drag the total down every time they appear (e.g. VPN toggling) — those are
-// skipped. Tap/bridge/veth devices follow the same rule via their name.
+// Loopback is excluded (local IPC is not internet traffic). Interfaces that
+// have been down since boot report all-zero counters and are skipped so they
+// do not drag the total when they appear (e.g. a VPN tap brought up after
+// boot); once they carry traffic their rx/tx are included.
 
 bool NetMetrics::takeSnapshot()
 {
@@ -26,7 +24,8 @@ bool NetMetrics::takeSnapshot()
         return false;
     }
 
-    long long total = 0;
+    long long totalRx = 0;
+    long long totalTx = 0;
     bool haveAny = false;
 
     // NOTE: never gate the loop on atEnd()/canReadLine() here — procfs files
@@ -58,20 +57,19 @@ bool NetMetrics::takeSnapshot()
         if (!okRx || !okTx)
             continue;
 
-        // Interfaces that never carried traffic report 0/0 (e.g. a VPN tap
-        // brought up after boot). Counting them would subtract their old
-        // counters from the total; skipping them keeps the rate sane.
         if (rx == 0 && tx == 0)
             continue;
 
-        total += rx + tx;
+        totalRx += rx;
+        totalTx += tx;
         haveAny = true;
     }
 
     if (!haveAny)
         return false;
 
-    m_prevBytes = total;
+    m_prevRx = totalRx;
+    m_prevTx = totalTx;
     m_prevTimeMs = QDateTime::currentMSecsSinceEpoch();
     return true;
 }
@@ -90,7 +88,8 @@ std::optional<NetMetrics::NetSample> NetMetrics::sample()
     }
 
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    const long long prevBytes = m_prevBytes;
+    const long long prevRx = m_prevRx;
+    const long long prevTx = m_prevTx;
     const qint64 prevTimeMs = m_prevTimeMs;
 
     if (!takeSnapshot())
@@ -102,12 +101,13 @@ std::optional<NetMetrics::NetSample> NetMetrics::sample()
 
     // Counter wrap/reset (module reload, interface recreate) would produce a
     // huge bogus spike; discard the interval instead of showing it.
-    const double deltaBytes = double(m_prevBytes - prevBytes);
-    if (deltaBytes < 0.0) {
+    const double deltaRx = double(m_prevRx - prevRx);
+    const double deltaTx = double(m_prevTx - prevTx);
+    if (deltaRx < 0.0 || deltaTx < 0.0)
         return std::nullopt;
-    }
 
     NetSample s;
-    s.megaBytesPerSecond = (deltaBytes / elapsedSec) / (1024.0 * 1024.0);
+    s.downMBps = (deltaRx / elapsedSec) / (1024.0 * 1024.0);
+    s.upMBps = (deltaTx / elapsedSec) / (1024.0 * 1024.0);
     return s;
 }

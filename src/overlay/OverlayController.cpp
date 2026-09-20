@@ -3,14 +3,87 @@
 #include "TrayIcon.h"
 #include "WaylandOverlay.h"
 #include "X11Overlay.h"
+#include "metrics/HudRow.h"
 #include "metrics/MetricManager.h"
 
+#include <QDBusAbstractAdaptor>
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QCursor>
+#include <QDir>
+#include <QFile>
 #include <QFont>
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QScreen>
+#include <QStandardPaths>
+#include <QTimer>
 
 #include <algorithm>
+
+namespace {
+
+constexpr auto kHudBusPath = "/Hud";
+constexpr auto kMenuPlugin = "system-overlay-menu";
+
+const char kMenuScript[] = R"JS(
+var hadPopup = false;
+function isPlasmaPopup(w) {
+    if (!w)
+        return false;
+    try {
+        var rc = String(w.resourceClass || "").toLowerCase();
+        if (rc.indexOf("plasmashell") < 0)
+            return false;
+        return !!(w.popupWindow || w.dropdownMenu || w.comboBox);
+    } catch (e) {
+        return false;
+    }
+}
+function recount() {
+    var n = 0;
+    var list = workspace.stackingOrder;
+    for (var i = 0; i < list.length; ++i) {
+        if (isPlasmaPopup(list[i]))
+            n++;
+    }
+    try {
+        if (n > 0) {
+            hadPopup = true;
+            callDBus("local.systemoverlay", "/Hud", "local.systemoverlay.Hud", "holdHud");
+        } else if (hadPopup) {
+            hadPopup = false;
+            callDBus("local.systemoverlay", "/Hud", "local.systemoverlay.Hud", "releaseHudSoon");
+        }
+    } catch (e) {}
+}
+var timer = new QTimer();
+timer.interval = 200;
+timer.timeout.connect(recount);
+timer.start();
+)JS";
+
+class HudDbusAdaptor : public QDBusAbstractAdaptor
+{
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "local.systemoverlay.Hud")
+public:
+    explicit HudDbusAdaptor(OverlayController *c)
+        : QDBusAbstractAdaptor(c)
+        , m(c)
+    {
+    }
+
+public Q_SLOTS:
+    void holdHud() { m->holdHud(); }
+    void releaseHud() { m->releaseHud(); }
+    void releaseHudSoon() { m->releaseHudSoon(); }
+
+private:
+    OverlayController *m = nullptr;
+};
+
+} // namespace
 
 OverlayController::OverlayController(const Config &config, MetricManager *metrics, QObject *parent)
     : QObject(parent)
@@ -28,6 +101,12 @@ OverlayController::OverlayController(const Config &config, MetricManager *metric
                 X11Overlay::place(e.window.get(), e.screen, m_config);
         }
     });
+    registerHudDbus();
+}
+
+OverlayController::~OverlayController()
+{
+    unloadMenuScript();
 }
 
 OverlayWindow::RenderConfig OverlayController::renderConfigFor(QScreen *screen) const
@@ -92,6 +171,134 @@ void OverlayController::removeWindowForScreen(QScreen *screen)
         m_windows.end());
 }
 
+void OverlayController::hideAllWindows()
+{
+    for (const Entry &e : m_windows)
+        e.window->hide();
+}
+
+void OverlayController::showAllWindows()
+{
+    const bool wayland = QGuiApplication::platformName() == QLatin1String("wayland");
+    for (const Entry &e : m_windows) {
+        if (e.layerShell) {
+            WaylandOverlay::configure(e.window.get(), m_config, e.screen);
+            WaylandOverlay::applyScreen(e.window.get(), e.screen);
+        }
+        e.window->setOpacity(1);
+        e.window->show();
+        if (!wayland)
+            X11Overlay::place(e.window.get(), e.screen, m_config);
+    }
+}
+
+void OverlayController::rebuildWindows()
+{
+    std::vector<QScreen *> screens;
+    screens.reserve(m_windows.size());
+    for (const Entry &e : m_windows)
+        screens.push_back(e.screen);
+    m_windows.clear();
+    for (QScreen *screen : screens) {
+        addWindowForScreen(screen);
+        showWindow(m_windows.back().window.get(), screen);
+    }
+}
+
+void OverlayController::setHudSuppressed(bool suppressed)
+{
+    if (!suppressed) {
+        // Parking works; unparking the same layer-shell surface often does
+        // not. Recreate the overlay so it maps again in the corner.
+        rebuildWindows();
+        return;
+    }
+    for (const Entry &e : m_windows) {
+        if (e.layerShell)
+            WaylandOverlay::park(e.window.get(), e.screen);
+        else
+            e.window->hide();
+    }
+}
+
+void OverlayController::holdHudForMenu()
+{
+    if (m_hudRestoreTimer)
+        m_hudRestoreTimer->stop();
+    m_hudParked = true;
+    m_cursorAwayTicks = 0;
+    if (m_menuPollTimer)
+        m_menuPollTimer->start();
+    setHudSuppressed(true);
+}
+
+void OverlayController::armHudRestore()
+{
+    if (!m_userWantsVisible || !m_hudParked)
+        return;
+    if (m_hudRestoreTimer)
+        m_hudRestoreTimer->start();
+}
+
+void OverlayController::holdHud()
+{
+    m_sawShellPopup = true;
+    holdHudForMenu();
+}
+
+void OverlayController::releaseHudSoon()
+{
+    if (!m_sawShellPopup)
+        return;
+    m_sawShellPopup = false;
+    armHudRestore();
+}
+
+void OverlayController::releaseHud()
+{
+    if (m_hudRestoreTimer)
+        m_hudRestoreTimer->stop();
+    if (m_menuPollTimer)
+        m_menuPollTimer->stop();
+    m_cursorAwayTicks = 0;
+    if (!m_userWantsVisible) {
+        m_hudParked = false;
+        return;
+    }
+    if (!m_hudParked)
+        return;
+    m_hudParked = false;
+    m_sawShellPopup = false;
+    setHudSuppressed(false);
+}
+
+void OverlayController::pollMenuCursor()
+{
+    if (!m_hudParked || !m_userWantsVisible)
+        return;
+    QScreen *screen = nullptr;
+    if (!m_windows.empty())
+        screen = m_windows.front().screen;
+    if (!screen)
+        screen = QGuiApplication::primaryScreen();
+    if (!screen)
+        return;
+    const QRect g = screen->availableGeometry();
+    const QPoint c = QCursor::pos();
+    // Tray menus open from the panel. Keep the HUD parked while the pointer
+    // stays in that half of the screen so a tall "Renk" submenu is covered.
+    const bool inMenuZone = m_config.bottomAnchored()
+        ? (c.y() >= g.top() + g.height() * 45 / 100)
+        : (c.y() <= g.top() + g.height() * 55 / 100);
+    if (inMenuZone) {
+        m_cursorAwayTicks = 0;
+        return;
+    }
+    ++m_cursorAwayTicks;
+    if (m_cursorAwayTicks >= 4)
+        releaseHud();
+}
+
 void OverlayController::createTrayIcon()
 {
     if (!m_config.showTray() || m_tray)
@@ -99,18 +306,31 @@ void OverlayController::createTrayIcon()
 
     m_tray = new TrayIcon(this);
 
+    m_hudRestoreTimer = new QTimer(this);
+    m_hudRestoreTimer->setSingleShot(true);
+    m_hudRestoreTimer->setInterval(400);
+    connect(m_hudRestoreTimer, &QTimer::timeout, this, &OverlayController::releaseHud);
+
+    m_menuPollTimer = new QTimer(this);
+    m_menuPollTimer->setInterval(150);
+    connect(m_menuPollTimer, &QTimer::timeout, this, &OverlayController::pollMenuCursor);
+
     connect(m_tray, &TrayIcon::hideRequested, this, [this]() {
-        for (const Entry &e : m_windows)
-            e.window->hide();
+        m_userWantsVisible = false;
+        if (m_hudRestoreTimer)
+            m_hudRestoreTimer->stop();
+        if (m_menuPollTimer)
+            m_menuPollTimer->stop();
+        m_hudParked = false;
+        hideAllWindows();
     });
     connect(m_tray, &TrayIcon::showRequested, this, [this]() {
-        const bool xcb = QGuiApplication::platformName() != QLatin1String("wayland");
-        for (const Entry &e : m_windows) {
-            e.window->show();
-            if (xcb)
-                X11Overlay::place(e.window.get(), e.screen, m_config);
-        }
+        m_userWantsVisible = true;
+        showAllWindows();
     });
+    connect(m_tray, &TrayIcon::menuAboutToShow, this, &OverlayController::holdHudForMenu);
+    connect(m_tray, &TrayIcon::menuAboutToHide, this, &OverlayController::armHudRestore);
+    connect(m_tray, &TrayIcon::menuActionTriggered, this, &OverlayController::releaseHud);
     connect(m_tray, &TrayIcon::pauseRequested, m_metrics, &MetricManager::setPaused);
     connect(m_tray, &TrayIcon::metricToggled, m_metrics, &MetricManager::setRowVisible);
     connect(m_tray, &TrayIcon::baseColorRequested, this, [this](const QColor &color) {
@@ -118,11 +338,55 @@ void OverlayController::createTrayIcon()
         Config::saveTextColor(color); // survives restarts
     });
     connect(m_tray, &TrayIcon::quitRequested, qGuiApp, &QCoreApplication::quit);
+
+    for (int row = 0; row < RowCount; ++row)
+        m_tray->setRowChecked(row, m_metrics->rowVisible(row));
+}
+
+void OverlayController::registerHudDbus()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    new HudDbusAdaptor(this);
+    bus.registerObject(QString::fromUtf8(kHudBusPath), this);
+}
+
+void OverlayController::loadMenuScript()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    if (dir.isEmpty())
+        return;
+    QDir().mkpath(dir);
+    const QString path = dir + QStringLiteral("/system-overlay-kwin-menu.js");
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+        return;
+    f.write(kMenuScript);
+    f.close();
+
+    QDBusInterface kwin(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"),
+        QStringLiteral("org.kde.kwin.Scripting"), QDBusConnection::sessionBus());
+    if (!kwin.isValid())
+        return;
+    kwin.call(QStringLiteral("unloadScript"), QString::fromUtf8(kMenuPlugin));
+    kwin.call(QStringLiteral("loadScript"), path, QString::fromUtf8(kMenuPlugin));
+    kwin.call(QStringLiteral("start"));
+}
+
+void OverlayController::unloadMenuScript()
+{
+    QDBusInterface kwin(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"),
+        QStringLiteral("org.kde.kwin.Scripting"), QDBusConnection::sessionBus());
+    if (!kwin.isValid())
+        return;
+    kwin.call(QStringLiteral("unloadScript"), QString::fromUtf8(kMenuPlugin));
 }
 
 void OverlayController::start()
 {
     createTrayIcon();
+    loadMenuScript();
 
     connect(qGuiApp, &QGuiApplication::primaryScreenChanged, this, [this](QScreen *screen) {
         if (m_config.screenMode() != Config::ScreenMode::Primary || m_windows.empty())
@@ -182,3 +446,5 @@ void OverlayController::start()
 
     m_metrics->start();
 }
+
+#include "OverlayController.moc"

@@ -47,14 +47,16 @@ void Config::setScreen(const QString &spec)
 
 static Config::Position parsePosition(const QString &value)
 {
-    const QString s = value.trimmed().toLower();
-    if (s == QLatin1String("top-left"))
+    QString s = value.trimmed().toLower();
+    s.remove(QLatin1Char('-'));
+    s.remove(QLatin1Char('_'));
+    if (s == QLatin1String("topleft"))
         return Config::Position::TopLeft;
-    if (s == QLatin1String("top-right"))
+    if (s == QLatin1String("topright"))
         return Config::Position::TopRight;
-    if (s == QLatin1String("bottom-left"))
+    if (s == QLatin1String("bottomleft"))
         return Config::Position::BottomLeft;
-    // "bottom-right" is the default; unknown values fall back to it too.
+    // "bottomright" / "bottom-right" is the default; unknown values fall back to it too.
     return Config::Position::BottomRight;
 }
 
@@ -109,6 +111,7 @@ void Config::load(const QString &explicitPath)
     m_showRam = settings.value(QStringLiteral("metrics/show_ram"), true).toBool();
     m_showVram = settings.value(QStringLiteral("metrics/show_vram"), true).toBool();
     m_showNet = settings.value(QStringLiteral("metrics/show_net"), true).toBool();
+    m_showFps = settings.value(QStringLiteral("metrics/show_fps"), true).toBool();
     m_netLinkMbit = std::clamp(
         settings.value(QStringLiteral("metrics/net_link_mbit"), 1000.0).toDouble(), 0.0, 1000000.0);
 }
@@ -166,7 +169,8 @@ void Config::writeDefaultConfigFile(const QString &path) const
         "show_ram=true\n"
         "show_vram=true\n"
         "show_net=true\n"
-        "# Nominal line speed (Mbit/s) used as the NET bar's full scale:\n"
-        "# 1000 Mbit/s line -> 125 MB/s. 0 hides the NET bar.\n"
+        "show_fps=true\n"
+        "# Nominal line speed (Mbit/s) used as the up/down bars' full scale:\n"
+        "# 1000 Mbit/s line -> 125 MB/s. 0 hides the bars (text only).\n"
         "net_link_mbit=1000\n");
 }

@@ -6,6 +6,8 @@
 #include <QMargins>
 #include <QScreen>
 
+#include <algorithm>
+
 #ifdef SYSTEM_OVERLAY_WITH_LAYERSHELL
 #include <LayerShellQt/Window>
 #endif
@@ -79,4 +81,26 @@ void WaylandOverlay::applyScreen(OverlayWindow *win, QScreen *screen)
     Q_UNUSED(win);
     Q_UNUSED(screen);
 #endif
+}
+
+void WaylandOverlay::park(OverlayWindow *win, QScreen *screen)
+{
+#ifdef SYSTEM_OVERLAY_WITH_LAYERSHELL
+    auto *layer = LayerShellQt::Window::get(win);
+    if (!layer)
+        return;
+    const QSize sz = screen ? screen->geometry().size() : QSize(4096, 4096);
+    const int d = std::max(sz.width(), sz.height()) + 64;
+    // Same anchors as the HUD, but margins push it past every edge.
+    layer->setLayer(LayerShellQt::Window::LayerBackground);
+    layer->setMargins(QMargins(d, d, d, d));
+#else
+    Q_UNUSED(win);
+    Q_UNUSED(screen);
+#endif
+}
+
+void WaylandOverlay::unpark(OverlayWindow *win, const Config &cfg, QScreen *screen)
+{
+    configure(win, cfg, screen);
 }

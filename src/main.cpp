@@ -1,5 +1,8 @@
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QLockFile>
+#include <QMessageBox>
+#include <QStandardPaths>
 
 #include "config/Config.h"
 #include "metrics/MetricManager.h"
@@ -19,7 +22,7 @@ int main(int argc, char *argv[])
 
     QCommandLineParser parser;
     parser.setApplicationDescription(
-        QStringLiteral("Lightweight performance overlay (CPU/GPU/RAM/VRAM/NET) for KDE Plasma.\n"
+        QStringLiteral("Lightweight performance overlay (CPU/GPU/RAM/VRAM/NET/FPS) for KDE Plasma.\n"
                        "Uses KWin layer-shell on Wayland so it stays visible above normal,\n"
                        "maximized and fullscreen windows, is click-through and never takes focus."));
     parser.addHelpOption();
@@ -36,6 +39,18 @@ int main(int argc, char *argv[])
 
     parser.addOptions({intervalOpt, screenOpt, debugOpt});
     parser.process(app);
+
+    QString lockDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    if (lockDir.isEmpty())
+        lockDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    QLockFile instanceLock(lockDir + QStringLiteral("/system-overlay.lock"));
+    instanceLock.setStaleLockTime(2000);
+    if (!instanceLock.tryLock(0)) {
+        qWarning("system-overlay is already running");
+        QMessageBox::warning(nullptr, QStringLiteral("system-overlay"),
+            QStringLiteral("system-overlay zaten çalışıyor."));
+        return 1;
+    }
 
     Config config;
     config.load();

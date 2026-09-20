@@ -23,7 +23,16 @@ struct HudRow
 };
 
 // Row indices shared by MetricManager and the tray menu toggles.
-enum HudRows { RowCpu = 0, RowGpu = 1, RowRam = 2, RowVram = 3, RowNet = 4, RowCount = 5 };
+enum HudRows {
+    RowCpu = 0,
+    RowGpu = 1,
+    RowRam = 2,
+    RowVram = 3,
+    RowNetUp = 4,
+    RowNetDown = 5,
+    RowFps = 6,
+    RowCount = 7
+};
 
 // Split "CPU: 12% 45°C" into label + value. A row without a colon (or with
 // an empty label) is returned unchanged with an empty label, which the
@@ -52,7 +61,9 @@ inline void splitHudText(const QString &text, QString *label, QString *value)
 //   GPU:  14% 47°C
 //   RAM:  5.4/31.3 GiB
 //   VRAM: 0.5/8.0 GiB
-//   NET:  73.2 MB/s
+//   up:   12.3 MB/s
+//   down: 73.2 MB/s
+//   FPS:  60
 //
 // Rows are produced by independent metric blocks; rows can appear/disappear
 // at runtime (tray checkboxes, missing sensors, GPU without VRAM info), so
@@ -74,7 +85,7 @@ inline void alignHudRows(std::vector<HudRow> &rows)
         return;
 
     // "NAME:" + one trailing space forms the label field, padded to a common
-    // character count so values line up ("NET:  73 MB/s" vs "VRAM: 0.5/8.0").
+    // character count so values line up ("up:   12 MB/s" vs "VRAM: 0.5/8.0").
     for (HudRow &row : rows) {
         if (row.label.isEmpty())
             continue;

@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(system-overlay
-    VERSION 1.3.0
-    DESCRIPTION "Lightweight KDE Plasma performance overlay (CPU/GPU/RAM/VRAM HUD)"
+    VERSION 1.4.1
+    DESCRIPTION "Lightweight KDE Plasma performance overlay (CPU/GPU/RAM/VRAM/NET/FPS HUD)"
     LANGUAGES CXX
 )
 
@@ -14,7 +14,7 @@ set(CMAKE_AUTOMOC ON)
 
 include(GNUInstallDirs)
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Widgets DBus)
 
 option(WITH_LAYERSHELL "Use KDE LayerShellQt for the Wayland overlay" ON)
 option(INSTALL_AUTOSTART "Install XDG autostart entry into /etc/xdg/autostart (off by default)" OFF)
@@ -39,6 +39,7 @@ add_executable(system-overlay
     src/metrics/CpuMetrics.cpp
     src/metrics/MemoryMetrics.cpp
     src/metrics/NetMetrics.cpp
+    src/metrics/FpsTracker.cpp
     src/sensors/HwmonScanner.cpp
     src/gpu/GpuDiscovery.cpp
     src/gpu/AmdGpuBackend.cpp
@@ -64,7 +65,7 @@ target_compile_options(system-overlay PRIVATE
 
 target_include_directories(system-overlay PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-target_link_libraries(system-overlay PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+target_link_libraries(system-overlay PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::DBus)
 
 if(WITH_LAYERSHELL)
     target_link_libraries(system-overlay PRIVATE LayerShellQt::Interface)

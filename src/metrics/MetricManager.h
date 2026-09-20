@@ -7,12 +7,12 @@
 #include "config/Config.h"
 #include "gpu/GpuMetrics.h"
 #include "metrics/CpuMetrics.h"
+#include "metrics/FpsTracker.h"
 #include "metrics/HudRow.h"
 #include "metrics/MemoryMetrics.h"
 #include "metrics/NetMetrics.h"
 #include "sensors/HwmonScanner.h"
 
-#include <optional>
 #include <vector>
 
 // Drives metric collection on a QTimer and renders the HUD rows.
@@ -68,6 +68,8 @@ Q_SIGNALS:
 
 private:
     QColor colorForPercent(double pct) const;
+    HudRow formatNetRow(const QString &label, double mBps,
+                        const std::optional<NetMetrics::NetSample> &net) const;
 
     const Config &m_config;
     QTimer *m_timer = nullptr;
@@ -76,8 +78,9 @@ private:
     MemoryMetrics m_memory;
     NetMetrics m_net;
     GpuMetrics m_gpu;
+    FpsTracker m_fps;
     HwmonScanner::CpuTempSource m_cpuTemp;
     std::vector<HudRow> m_currentRows;
-    bool m_rowVisible[RowCount] = {true, true, true, true, true};
+    bool m_rowVisible[RowCount] = {true, true, true, true, true, true, true};
     QColor m_baseColor;
 };
